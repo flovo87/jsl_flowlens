@@ -23,7 +23,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 MAX_STEPS = 400
 MAX_EMBED_CHARS = 250000   # per-file source embedded in the HTML output
 
@@ -162,6 +162,14 @@ DEF_RE = re.compile(
 INCLUDE_RE = re.compile(r"\bInclude\s*\(\s*\"([^\"]+)\"")
 CONFIG_RE = re.compile(
     r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\"[^\"]*\"|-?\d+(?:\.\d+)?)\s*$")
+
+# any assignment (not ==, <=, >=, !=), optionally namespace-qualified
+ASSIGN_RE = re.compile(
+    r"(?:^|[;,(\n])\s*(?:(::|[A-Za-z_][A-Za-z0-9_]*:))?"
+    r"([A-Za-z_][A-Za-z0-9_ ]*?)\s*=(?![=<>])")
+# JSL keywords that look like assignments but are arguments, not variables
+NOT_VARS = {"x", "y", "size", "title", "value", "width", "height", "min col",
+            "max col", "formula", "format", "set", "get"}
 
 EFFECT_PATTERNS = [
     ("table",  re.compile(r"\bNew Table\s*\(\s*(\"([^\"]*)\")?")),
@@ -385,6 +393,64 @@ def skip_args(inner, n):
         return "", 0
     off = parts[n][0]
     return inner[off:], off
+
+
+def extract_dataflow(files, all_defs):
+    """Which variables exist, and which component writes or reads each one.
+
+    Gives the graph a third kind of node (alongside functions and
+    expressions) and directed read/write edges, so a viewer can follow
+    producer -> variable -> consumer chains."""
+    variables = {}          # name -> dict
+    flows = set()           # (component_id, var_name, "read"|"write")
+
+    def note_var(name, file, line, value="", setting=False):
+        key = name
+        if key not in variables:
+            variables[key] = {"name": name, "file": file, "line": line,
+                              "value": value, "setting": setting}
+        elif setting and not variables[key]["setting"]:
+            variables[key].update(value=value, setting=True,
+                                  file=file, line=line)
+
+    # top-level assignments in every JSL file
+    for f in files.values():
+        if not isinstance(f, JslFile):
+            continue
+        for off, stmt in split_top_level(f.top_span, ";"):
+            m = ASSIGN_RE.search(stmt)
+            if not m:
+                continue
+            name = m.group(2).strip()
+            if not name or name.lower() in NOT_VARS or name in all_defs:
+                continue
+            lead = len(stmt) - len(stmt.lstrip())
+            line = line_of(f.top_span, off + lead)
+            lit = CONFIG_RE.match(stmt.strip())
+            note_var(name, f.name, line,
+                     lit.group(2).strip('"') if lit else "", bool(lit))
+
+    # Python module-level assignments
+    for f in files.values():
+        if isinstance(f, PyFile):
+            for v in f.variables:
+                note_var(v["name"], v["file"], v["line"], v["value"], True)
+
+    # who writes and who reads each variable
+    for d in all_defs.values():
+        body = d.get("body") or d.get("src") or ""
+        if not body:
+            continue
+        for m in ASSIGN_RE.finditer(body):
+            nm = m.group(2).strip()
+            if nm in variables:
+                flows.add((d["id"], nm, "write"))
+        for name in variables:
+            if re.search(r"(?<![A-Za-z0-9_])" + re.escape(name)
+                         + r"(?![A-Za-z0-9_])", body):
+                if (d["id"], name, "write") not in flows:
+                    flows.add((d["id"], name, "read"))
+    return variables, flows
 
 
 def scan_events(text, base_line_code, base_off, known):
@@ -1204,6 +1270,8 @@ def build_model(sources, entry=None, addin_meta=None):
         candidates = [n for n in files if n not in included]
         entry = candidates[0] if candidates else next(iter(files))
 
+    df_vars, df_flows = extract_dataflow(files, all_defs)
+
     roots = [entry] + [n for n in files
                        if n != entry and n not in included]
     w = Walker(files, all_defs)
@@ -1256,6 +1324,9 @@ def build_model(sources, entry=None, addin_meta=None):
         "variables": [v for f in files.values() for v in f.variables],
         "edges": [{"from": a, "to": b, "conditional": c} for a, b, c in sorted(w.edges)],
         "steps": w.steps,
+        # variables as graph items, with directed read/write links
+        "vars": sorted(df_vars.values(), key=lambda v: (v["file"], v["line"])),
+        "flows": [{"from": a, "var": b, "kind": c} for a, b, c in sorted(df_flows)],
     }
     return model
 

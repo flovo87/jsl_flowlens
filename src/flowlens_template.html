@@ -6,12 +6,24 @@
 <title>JSL FlowLens</title>
 <style>
   :root{
-    --bg:#f4f6fa; --panel:#ffffff; --ink:#1e2733; --muted:#66738a;
-    --accent:#2f6fde; --accent-soft:#e3edfd; --lane:#eef1f7; --lane-head:#dde4f0;
-    --node:#ffffff; --node-border:#c3cde0; --node-active:#2f6fde;
-    --edge:#c7d0e2; --edge-lit:#2f6fde; --edge-cond:#d98324;
-    --ok:#2e9960; --warn:#d98324; --err:#c94040;
-    --radius:10px; --shadow:0 1px 4px rgba(30,39,51,.10);
+    /* JMP brand palette (jmp.com): orange action, blue structure,
+       purple secondary. Everything else is derived from these three. */
+    --jmp-orange:#FE5A22; --jmp-orange-soft:#FFE3D8; --jmp-orange-dk:#D8410F;
+    --jmp-blue:#1570C8;   --jmp-blue-soft:#E2EDFA;   --jmp-blue-dk:#0B3D75;
+    --jmp-purple:#92509E; --jmp-purple-soft:#F0E6F3;
+    --bg:#F5F7FA; --panel:#ffffff; --ink:#1D2733; --muted:#63718A;
+    --accent:var(--jmp-blue); --accent-soft:var(--jmp-blue-soft);
+    --action:var(--jmp-orange);
+    --lane:#E9EDF4; --lane-head:#DCE3EE;
+    --node:#ffffff; --node-border:#C2CDDE; --node-active:var(--jmp-orange);
+    --edge:#8C9AB0; --edge-lit:var(--jmp-blue); --edge-cond:var(--jmp-purple);
+    --edge-hot:var(--jmp-orange);
+    --flow-read:var(--jmp-blue); --flow-write:var(--jmp-orange);
+    --ok:var(--jmp-blue); --warn:var(--jmp-orange); --err:#C0341A;
+    /* item colours, all inside the JMP family */
+    --c-script:var(--jmp-blue-dk); --c-func:var(--jmp-blue);
+    --c-expr:var(--jmp-purple);    --c-var:var(--jmp-orange);
+    --radius:10px; --shadow:0 1px 4px rgba(29,39,51,.10);
     font-size:15px;
   }
   *{box-sizing:border-box}
@@ -41,9 +53,9 @@
       background:var(--accent-soft);color:var(--ink)}
   .transport{display:flex;gap:6px}
   .transport button{width:42px;padding:0;font-size:.95rem}
-  .controls button.play{background:var(--accent);color:#fff;border-color:var(--accent);
+  .controls button.play{background:var(--action);color:#fff;border-color:var(--action);
                         width:64px;font-size:1rem}
-  .controls button.play:hover{background:#2a63c6;color:#fff}
+  .controls button.play:hover{background:var(--jmp-orange-dk);color:#fff}
   .viewsw{display:flex;gap:6px}
   .viewsw button{min-width:96px}
   .viewsw button.on{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -62,6 +74,34 @@
   main.solo #expl{display:none}
   @media(max-width:1000px){main{grid-template-columns:1fr}}
   .card{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .gbar{display:none;align-items:center;gap:8px;flex-wrap:wrap;
+        padding:8px 12px;border-bottom:1px solid var(--lane);font-size:.8rem}
+  .gbar.on{display:flex}
+  .gbar .gl{color:var(--muted);font-weight:700;text-transform:uppercase;
+            font-size:.66rem;letter-spacing:.4px}
+  .gbar .viewsw button{min-width:0;height:28px;padding:0 10px;font-size:.75rem}
+  .gsep{width:1px;height:20px;background:var(--lane)}
+  .gfilters{display:flex;gap:4px;flex-wrap:wrap}
+  .gfilters button{height:28px;padding:0 10px;font-size:.75rem;font-weight:600;
+                   border:1px solid var(--node-border);background:var(--panel);
+                   border-radius:8px;cursor:pointer;color:var(--muted)}
+  .gfilters button.on{color:#fff;border-color:transparent}
+  .gfilters button.on.f-func{background:var(--c-func)}
+  .gfilters button.on.f-expr{background:var(--c-expr)}
+  .gfilters button.on.f-var{background:var(--c-var)}
+  .gfilters button.on.f-script{background:var(--c-script)}
+  .gfilters button.on.f-flow{background:var(--muted)}
+  .zoomctl{display:flex;align-items:center;gap:5px;margin-left:auto}
+  .zoomctl .toolbtn{height:28px;padding:0 10px;font-size:.8rem}
+  .zoomctl #zoomPct{font-variant-numeric:tabular-nums;color:var(--muted);
+                    min-width:42px;text-align:center}
+  .glegend{display:none;gap:14px;flex-wrap:wrap;padding:6px 12px;
+           font-size:.72rem;color:var(--muted);border-bottom:1px solid var(--lane)}
+  .glegend.on{display:flex}
+  .glegend i{display:inline-block;width:11px;height:11px;border-radius:3px;
+             margin-right:5px;vertical-align:-1px}
+  .glegend .ln{display:inline-block;width:16px;height:0;
+               border-top:2px solid var(--edge);margin-right:5px;vertical-align:4px}
   #diagramWrap{position:relative;overflow:auto;padding:10px;max-height:68vh;scroll-behavior:smooth}
   #banner{display:flex;align-items:center;gap:8px;min-height:40px;padding:8px 14px;
           border-bottom:1px solid var(--lane);font-size:.88rem;line-height:1.35;
@@ -80,8 +120,8 @@
   .ch-node.wf rect{stroke:var(--accent);stroke-dasharray:none;fill:#f0f5fe}
   .ch-node.wf text{font-weight:600}
   /* Python steps get a green tint so language changes are visible */
-  .ch-node.pylang rect,.ch-node.pylang polygon{stroke:#4f9440;fill:#f6fbf5}
-  .ch-node.pylang.cur rect,.ch-node.pylang.cur polygon{fill:#e6f4e2;stroke:#3d7a30}
+  .ch-node.pylang rect,.ch-node.pylang polygon{stroke:var(--jmp-purple);fill:var(--jmp-purple-soft)}
+  .ch-node.pylang.cur rect,.ch-node.pylang.cur polygon{fill:#E7D8ED;stroke:var(--jmp-purple)}
   .ch-node text{font-size:11.5px;fill:var(--ink)}
   .ch-node .ch-numsvg{font-size:9px;fill:var(--muted)}
   .ch-node .ch-sub{font-size:9px;fill:#94a1b6;font-family:Consolas,Monaco,monospace}
@@ -121,24 +161,37 @@
   .lane-head{fill:var(--lane-head)}
   .lane-title{font-weight:700;font-size:13px;fill:var(--ink)}
   .lang-badge{fill:#d8e0ee}
-  .lang-badge.lang-python{fill:#dcedd9}
+  .lang-badge.lang-python{fill:#F0E6F3}
   .lang-badge.lang-notebook{fill:#e6ddf2}
   .lang-badge-t{font-size:9.5px;font-weight:700;fill:#54627a}
   .pill{font-size:.66rem;font-weight:700;border-radius:8px;padding:1px 6px;
         margin-left:5px;background:#e2e8f2;color:#54627a;letter-spacing:.3px}
-  .pill.python{background:#dcedd9;color:#2f6b2a}
+  .pill.python{background:var(--jmp-purple-soft);color:var(--jmp-purple)}
   .pill.notebook{background:#e6ddf2;color:#553f86}
-  .node rect{fill:var(--node);stroke:var(--node-border);stroke-width:1.2;rx:8}
+  .node rect{fill:var(--node);stroke:var(--node-border);stroke-width:1.4;rx:8}
+  .node.kind-script rect{stroke:var(--c-script);stroke-width:2}
+  .node.kind-func   rect{stroke:var(--c-func)}
+  .node.kind-expr   rect{stroke:var(--c-expr)}
+  .node.kind-var    rect{stroke:var(--c-var);fill:#FFF8F5;stroke-dasharray:4 3}
+  .node.kind-script text:first-of-type{fill:var(--c-script);font-weight:700}
+  .node.kind-func   text:first-of-type{fill:var(--c-func);font-weight:600}
+  .node.kind-expr   text:first-of-type{fill:var(--c-expr);font-weight:600}
+  .node.kind-var    text:first-of-type{fill:var(--jmp-orange-dk);font-weight:600}
+  .node.dim{opacity:.16}
+  .edge.dim{opacity:.07}
+  .edge.read{stroke:var(--flow-read);stroke-dasharray:2 3;opacity:.85}
+  .edge.write{stroke:var(--flow-write);stroke-dasharray:2 3;opacity:.85}
+  .edge.call-cond{stroke-dasharray:5 4;stroke:var(--edge-cond)}
   .node text{font-size:12px;fill:var(--ink)}
   .node .sub{font-size:9.5px;fill:var(--muted)}
   .node.visited rect{stroke:var(--accent);stroke-width:1.4}
-  .node.current rect{stroke:var(--node-active);stroke-width:2.6;
-                     filter:drop-shadow(0 0 6px rgba(47,111,222,.6))}
+  .node.current rect{stroke:var(--node-active);stroke-width:3;
+                     filter:drop-shadow(0 0 7px rgba(254,90,34,.55))}
   .edge{stroke:var(--edge);stroke-width:1.3;fill:none}
   .edge.cond{stroke-dasharray:5 4}
-  .edge.lit{stroke:var(--edge-lit);stroke-width:2.2}
+  .edge.lit{stroke:var(--edge-lit);stroke-width:2.4;opacity:1}
   .edge.lit.cond{stroke:var(--edge-cond)}
-  .edge.cur{stroke:var(--edge-lit);stroke-width:3;stroke-dasharray:8 6;
+  .edge.cur{stroke:var(--edge-hot);stroke-width:3.2;stroke-dasharray:8 6;
             animation:flow .8s linear infinite}
   @keyframes flow{to{stroke-dashoffset:-14}}
 
@@ -157,7 +210,7 @@
                vertical-align:top}
   .sb-row{cursor:pointer}
   .sb-row:hover td{background:#f7f9fd}
-  .sb-row.done td{background:#fbfdfa}
+  .sb-row.done td{background:#FAFCFF}
   .sb-row.future{opacity:.5}
   .sb-row.cur td{background:var(--accent-soft);box-shadow:inset 0 0 0 1px rgba(47,111,222,.3)}
   .c-num{width:38px;color:var(--muted);font-variant-numeric:tabular-nums;
@@ -196,16 +249,16 @@
   .lens-nums .gapnum{color:var(--warn);font-weight:700}
   .lens-prog{position:relative;flex:1;min-width:140px;height:8px;
              background:var(--lane);border-radius:4px;overflow:hidden}
-  .lens-prog div{position:absolute;left:0;top:0;height:100%;background:#3fa06a;
+  .lens-prog div{position:absolute;left:0;top:0;height:100%;background:var(--jmp-blue);
                  border-radius:4px;z-index:2}
-  .lens-prog .mod{background:#bcd2f4;z-index:1}
+  .lens-prog .mod{background:#C9DCF3;z-index:1}
   .lens-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.74rem;
                color:var(--muted);margin-bottom:8px;align-items:center}
   .lens-legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;
                    margin-right:5px;vertical-align:-1px;border:1px solid #d5dce8}
-  .sw.reached{background:#d7f0df}.sw.modelled{background:#e3edfd}
+  .sw.reached{background:#D3E7FA}.sw.modelled{background:#EDF3FC}
   .sw.explained{background:#eceef3}
-  .sw.gap{background:#fdeccd}.sw.noncode{background:#f4f6fa}
+  .sw.gap{background:var(--jmp-orange-soft)}.sw.noncode{background:#f4f6fa}
   .lens-code{font-family:Consolas,Monaco,monospace;font-size:.78rem;
              line-height:1.5;border:1px solid var(--lane);border-radius:8px;
              overflow:auto;max-height:56vh}
@@ -214,11 +267,11 @@
           color:#9aa7bd;user-select:none;border-right:1px solid #e6ebf3;
           margin-right:9px}
   .lc .lt{padding-right:14px}
-  .lc.reached{background:#d7f0df}
-  .lc.reached .ln{color:#3d7a54}
-  .lc.modelled{background:#eaf2fe}
+  .lc.reached{background:#D3E7FA}
+  .lc.reached .ln{color:var(--jmp-blue-dk)}
+  .lc.modelled{background:#EDF3FC}
   .lc.explained{background:#eceef3;color:#5a6478}
-  .lc.gap{background:#fdeccd}
+  .lc.gap{background:var(--jmp-orange-soft)}
   .lc.gap .ln{color:var(--warn);font-weight:700}
   .lc.noncode{color:#8e9bb0}
   .lc.reached,.lc.modelled,.lc.gap{cursor:pointer}
@@ -361,6 +414,27 @@
 <main>
   <div class="card">
     <div id="banner"></div>
+    <div class="gbar" id="gbar">
+      <span class="gl" data-i18n="layoutLabel"></span>
+      <span class="viewsw" id="layoutSel">
+        <button data-l="hierarchical" class="on" onclick="setLayout('hierarchical')" data-i18n="layoutHier"></button>
+        <button data-l="swimlane" onclick="setLayout('swimlane')" data-i18n="layoutLane"></button>
+        <button data-l="circular" onclick="setLayout('circular')" data-i18n="layoutCirc"></button>
+        <button data-l="grid" onclick="setLayout('grid')" data-i18n="layoutGrid"></button>
+      </span>
+      <span class="gsep"></span>
+      <span class="gl" data-i18n="showLabel"></span>
+      <span class="gfilters" id="gfilters"></span>
+      <span class="gsep"></span>
+      <span class="zoomctl">
+        <button class="toolbtn" onclick="zoomBy(-0.15)">−</button>
+        <span id="zoomPct">100%</span>
+        <button class="toolbtn" onclick="zoomBy(0.15)">+</button>
+        <button class="toolbtn" onclick="zoomReset()" data-i18n="zoomReset"></button>
+        <button class="toolbtn" id="btnClearFocus" onclick="setFocus(null)" data-i18n="clearFocus"></button>
+      </span>
+    </div>
+    <div id="legend" class="glegend"></div>
     <div id="diagramWrap">
       <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
@@ -413,6 +487,13 @@ const I18N = {
      showStmts:"Show plain statements",
      cmExtract:"Extract", cmFull:"Full script", cmLine:"line", cmLines:"lines",
      cmDefinition:"Definition", cmTruncated:"This file was truncated for embedding.",
+     layoutLabel:"Layout", layoutHier:"Hierarchical", layoutLane:"Swimlane",
+     layoutCirc:"Circular", layoutGrid:"Grid",
+     showLabel:"Show", fScript:"Scripts", fFunc:"Functions", fExpr:"Expressions",
+     fVar:"Variables", fFlow:"Dataflow",
+     zoomReset:"Reset", clearFocus:"Clear focus",
+     legCall:"calls", legCond:"conditional call", legRead:"reads variable",
+     legWrite:"writes variable", focusHint:"Double-click an item to focus on it",
      viewLens:"Coverage", printBtn:"Print / Save as PDF",
      optsBtn:"Options", explBtn:"Explanation",
      modeComponent:"By component", modeFlow:"Full flow",
@@ -483,6 +564,13 @@ const I18N = {
      showStmts:"Einfache Anweisungen anzeigen",
      cmExtract:"Auszug", cmFull:"Ganzes Skript", cmLine:"Zeile", cmLines:"Zeilen",
      cmDefinition:"Definition", cmTruncated:"Diese Datei wurde für die Einbettung gekürzt.",
+     layoutLabel:"Layout", layoutHier:"Hierarchisch", layoutLane:"Spuren",
+     layoutCirc:"Kreis", layoutGrid:"Raster",
+     showLabel:"Anzeigen", fScript:"Skripte", fFunc:"Funktionen", fExpr:"Ausdrücke",
+     fVar:"Variablen", fFlow:"Datenfluss",
+     zoomReset:"Zurücksetzen", clearFocus:"Fokus aufheben",
+     legCall:"ruft auf", legCond:"bedingter Aufruf", legRead:"liest Variable",
+     legWrite:"schreibt Variable", focusHint:"Doppelklick fokussiert ein Element",
      viewLens:"Abdeckung", printBtn:"Drucken / als PDF sichern",
      optsBtn:"Optionen", explBtn:"Erklärung",
      modeComponent:"Nach Bausteinen", modeFlow:"Gesamter Ablauf",
@@ -577,86 +665,266 @@ function computeSteps(){
   });
 }
 
-/* ------------------------------------------------ layout ---- */
-const NODE_W=195, NODE_H=44, NODE_GAP=14, COL_GAP=12, LANE_GAP=20,
-      HEAD_H=32, PAD=14, MAX_ROWS=9;
-const fileOrder=[MODEL.entry,...MODEL.files.map(f=>f.name).filter(n=>n!==MODEL.entry)];
-const tops=new Set(MODEL.steps.filter(s=>(s.owner||"").endsWith("::__top__")).map(s=>s.owner));
-tops.add(MODEL.entry+"::__top__");
-const nodes={}, lanes=[];
-let laneX=PAD, svgH=0;
-fileOrder.forEach((fn,li)=>{
-  const ids=[];
-  if(tops.has(fn+"::__top__")) ids.push(fn+"::__top__");
-  MODEL.functions.filter(f=>f.file===fn).sort((a,b)=>a.line-b.line)
-    .forEach(f=>ids.push(f.id));
-  const ncols=Math.max(1,Math.ceil(ids.length/MAX_ROWS));
-  const rows=Math.ceil(ids.length/ncols);
-  const laneW=ncols*(NODE_W+COL_GAP)+COL_GAP;
-  ids.forEach((id,k)=>{
-    const c=Math.floor(k/rows), r=k%rows;
-    nodes[id]={x:laneX+COL_GAP+c*(NODE_W+COL_GAP),
-               y:HEAD_H+PAD+12+r*(NODE_H+NODE_GAP), w:NODE_W, h:NODE_H, lane:li};
-  });
-  lanes.push({x:laneX,w:laneW,name:fn});
-  svgH=Math.max(svgH,HEAD_H+PAD+12+rows*(NODE_H+NODE_GAP)+PAD);
-  laneX+=laneW+LANE_GAP;
-});
-const svgW=laneX-LANE_GAP+PAD;
+/* ------------------------------------------------ graph ------
+   The Flow view is a real graph: functions, expressions, variables and
+   script roots, laid out four ways, filterable, zoomable. Call links and
+   directed read/write links are drawn between them. */
+const GRAPH={
+  layout:"hierarchical", zoom:1, focus:null,
+  show:{func:true,expr:true,var:true,script:true,flow:true}
+};
+const NW=186, NH=44;
+const fileOrder=[MODEL.entry,
+  ...MODEL.files.map(f=>f.name).filter(n=>n!==MODEL.entry)];
 
-const SVGNS="http://www.w3.org/2000/svg";
+function fitText(txt,max){return txt.length>max?txt.slice(0,max-1)+"…":txt}
+function fileLang(name){const f=MODEL.files.find(x=>x.name===name);return f&&f.lang||"jsl"}
+function varId(name){return "var::"+name}
+
+/* ---- the item set, before filtering ---- */
+const ITEMS=[];
+const tops=new Set(MODEL.steps.filter(s=>(s.owner||"").endsWith("::__top__"))
+                              .map(s=>s.owner));
+tops.add(MODEL.entry+"::__top__");
+tops.forEach(id=>ITEMS.push({id:id,kind:"script",file:id.split("::")[0],
+                             label:"⌂ "+id.split("::")[0],sub:"script"}));
+MODEL.functions.forEach(f=>ITEMS.push({
+  id:f.id,kind:(f.kind||"").toLowerCase()==="expr"?"expr":"func",
+  file:f.file,label:f.name,helper:f.helper,
+  sub:f.kind+(f.args&&f.args.length?"("+f.args.join(", ")+")":"()"),doc:f.doc}));
+(MODEL.vars||[]).forEach(v=>ITEMS.push({
+  id:varId(v.name),kind:"var",file:v.file,label:v.name,
+  sub:v.setting?("= "+String(v.value).slice(0,18)):"variable",
+  line:v.line,setting:v.setting}));
+
+function itemVisible(it){
+  if(!GRAPH.show[it.kind])return false;
+  if(it.kind==="func"&&it.helper&&!showHelpers)return false;
+  return true;
+}
+function visibleItems(){return ITEMS.filter(itemVisible)}
+
+/* ---- links ---- */
+function visibleLinks(){
+  const vis={};visibleItems().forEach(i=>vis[i.id]=1);
+  const out=[];
+  MODEL.edges.forEach(e=>{
+    if(vis[e.from]&&vis[e.to])
+      out.push({from:e.from,to:e.to,kind:e.conditional?"call-cond":"call"});
+  });
+  if(GRAPH.show.flow&&GRAPH.show.var){
+    (MODEL.flows||[]).forEach(f=>{
+      const v=varId(f.var);
+      if(!vis[f.from]||!vis[v])return;
+      out.push(f.kind==="write"?{from:f.from,to:v,kind:"write"}
+                               :{from:v,to:f.from,kind:"read"});
+    });
+  }
+  return out;
+}
+
+/* ---- layouts ---- */
+function layoutNodes(items,links){
+  const pos={},n=items.length;
+  if(!n)return {pos:pos,w:400,h:200};
+  const byId={};items.forEach(i=>byId[i.id]=i);
+  let W=0,H=0;
+  if(GRAPH.layout==="swimlane"){
+    const order=[MODEL.entry,...MODEL.files.map(f=>f.name).filter(x=>x!==MODEL.entry)];
+    let x=20;
+    order.forEach(fn=>{
+      const mine=items.filter(i=>i.file===fn);
+      if(!mine.length)return;
+      const rows=Math.min(mine.length,9),cols=Math.ceil(mine.length/rows);
+      mine.forEach((it,k)=>{
+        const c=Math.floor(k/rows),r=k%rows;
+        pos[it.id]={x:x+c*(NW+18),y:60+r*(NH+18),lane:fn};
+      });
+      x+=cols*(NW+18)+26;H=Math.max(H,60+rows*(NH+18));
+    });
+    W=x;
+  }else if(GRAPH.layout==="circular"){
+    const R=Math.max(180,n*30/Math.PI),cx=R+NW/2+30,cy=R+NH/2+30;
+    items.forEach((it,k)=>{
+      const a=-Math.PI/2+2*Math.PI*k/n;
+      pos[it.id]={x:cx+R*Math.cos(a)-NW/2,y:cy+R*Math.sin(a)-NH/2};
+    });
+    W=2*cx;H=2*cy;
+  }else if(GRAPH.layout==="grid"){
+    const cols=Math.max(1,Math.ceil(Math.sqrt(n*1.6)));
+    items.forEach((it,k)=>{
+      pos[it.id]={x:20+(k%cols)*(NW+20),y:30+Math.floor(k/cols)*(NH+22)};
+    });
+    W=20+cols*(NW+20);H=30+Math.ceil(n/cols)*(NH+22);
+  }else{                                   // hierarchical: layer by call depth
+    const depth={};
+    items.forEach(i=>{if(i.kind==="script")depth[i.id]=0});
+    const callLinks=links.filter(l=>l.kind.indexOf("call")===0);
+    for(let pass=0;pass<8;pass++){
+      callLinks.forEach(l=>{
+        if(depth[l.from]!==undefined)
+          depth[l.to]=Math.max(depth[l.to]===undefined?0:depth[l.to],
+                               depth[l.from]+1);
+      });
+    }
+    let maxD=0;
+    items.forEach(i=>{
+      if(i.kind==="var"){depth[i.id]=-1;return}
+      if(depth[i.id]===undefined)depth[i.id]=1;
+      maxD=Math.max(maxD,depth[i.id]);
+    });
+    items.forEach(i=>{if(i.kind==="var")depth[i.id]=maxD+1});
+    const rows={};
+    items.forEach(i=>{(rows[depth[i.id]]=rows[depth[i.id]]||[]).push(i)});
+    Object.keys(rows).map(Number).sort((a,b)=>a-b).forEach(d=>{
+      rows[d].forEach((it,k)=>{
+        pos[it.id]={x:20+k*(NW+22),y:30+d*(NH+52)};
+      });
+      W=Math.max(W,20+rows[d].length*(NW+22));
+      H=Math.max(H,30+(d+1)*(NH+52));
+    });
+  }
+  return {pos:pos,w:W+40,h:H+40};
+}
+
+/* ---- rendering ---- */
 const svg=document.getElementById("svg");
+const SVGNS="http://www.w3.org/2000/svg";
 function el(tag,attrs,parent){const e=document.createElementNS(SVGNS,tag);
   for(const k in attrs)e.setAttribute(k,attrs[k]);(parent||svg).appendChild(e);return e}
-svg.setAttribute("width",svgW);svg.setAttribute("height",svgH);
+let nodeEls={},edgeEls={},nodes={},svgW=800,svgH=400;
 
-function fileLang(name){const f=MODEL.files.find(x=>x.name===name);return f&&f.lang||"jsl"}
-lanes.forEach(l=>{
-  el("rect",{x:l.x,y:PAD,width:l.w,height:svgH-2*PAD,rx:10,class:"lane-bg"});
-  el("rect",{x:l.x,y:PAD,width:l.w,height:HEAD_H,rx:10,class:"lane-head"});
-  const tt=el("text",{x:l.x+12,y:PAD+21,class:"lane-title"});tt.textContent=l.name;
-  const lg=fileLang(l.name);
-  if(LANG_SHORT[lg]){
-    const bw=LANG_SHORT[lg].length*7+12;
-    el("rect",{x:l.x+l.w-bw-10,y:PAD+8,width:bw,height:17,rx:8,
-      class:"lang-badge lang-"+lg});
-    const bt=el("text",{x:l.x+l.w-bw/2-10,y:PAD+20,class:"lang-badge-t"});
-    bt.setAttribute("text-anchor","middle");bt.textContent=LANG_SHORT[lg];
+function renderGraph(){
+  svg.innerHTML="";nodeEls={};edgeEls={};
+  const items=visibleItems(),links=visibleLinks();
+  const L=layoutNodes(items,links);
+  nodes=L.pos;svgW=L.w;svgH=L.h;
+  svg.setAttribute("width",Math.round(svgW*GRAPH.zoom));
+  svg.setAttribute("height",Math.round(svgH*GRAPH.zoom));
+  svg.setAttribute("viewBox","0 0 "+svgW+" "+svgH);
+  const defs=el("defs",{});
+  defs.innerHTML=
+     marker("arrow","var(--edge)")
+    +marker("arrow-read","var(--flow-read)")
+    +marker("arrow-write","var(--flow-write)")
+    +marker("arrow-hot","var(--edge-hot)");
+  // lane backdrops only make sense in the swimlane layout
+  if(GRAPH.layout==="swimlane"){
+    const byLane={};
+    items.forEach(i=>{const p=nodes[i.id];if(!p)return;
+      const b=byLane[p.lane]=byLane[p.lane]||{x0:1e9,x1:0};
+      b.x0=Math.min(b.x0,p.x-14);b.x1=Math.max(b.x1,p.x+NW+14)});
+    Object.keys(byLane).forEach(fn=>{
+      const b=byLane[fn];
+      el("rect",{x:b.x0,y:14,width:b.x1-b.x0,height:svgH-28,rx:10,class:"lane-bg"});
+      el("rect",{x:b.x0,y:14,width:b.x1-b.x0,height:30,rx:10,class:"lane-head"});
+      const tt=el("text",{x:b.x0+12,y:34,class:"lane-title"});
+      tt.textContent=fn+"  ["+(LANG_SHORT[fileLang(fn)]||"")+"]";
+    });
   }
-});
-
-const edgeEls={};
-function edgePath(a,b){
-  const A=nodes[a],B=nodes[b];if(!A||!B)return null;
-  const aCx=A.x+A.w/2,bCx=B.x+B.w/2;
-  const sx=aCx<bCx?A.x+A.w:A.x, tx=aCx<bCx?B.x:B.x+B.w;
-  const y1=A.y+A.h/2,y2=B.y+B.h/2;
-  if(Math.abs(aCx-bCx)<5){const x=A.x+A.w,o=26;
-    return `M ${x} ${y1} C ${x+o} ${y1}, ${x+o} ${y2}, ${x} ${y2}`}
-  const mx=(sx+tx)/2;
-  return `M ${sx} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${tx} ${y2}`;
+  links.forEach(l=>{
+    const d=linkPath(l);if(!d)return;
+    const cls="edge "+l.kind;
+    const p=el("path",{d:d,class:cls,"marker-end":
+      "url(#"+(l.kind==="read"?"arrow-read":l.kind==="write"?"arrow-write":"arrow")+")"});
+    edgeEls[l.from+"->"+l.to]=p;
+  });
+  items.forEach(it=>{
+    const n=nodes[it.id];if(!n)return;
+    const g=el("g",{class:"node kind-"+it.kind});
+    el("rect",{x:n.x,y:n.y,width:NW,height:NH,rx:it.kind==="var"?14:8},g);
+    const t1=el("text",{x:n.x+10,y:n.y+18},g);
+    t1.textContent=fitText(it.label,24);
+    const t2=el("text",{x:n.x+10,y:n.y+33,class:"sub"},g);
+    t2.textContent=fitText(it.sub||"",28);
+    const ttl=el("title",{},g);
+    ttl.textContent=it.label+(it.doc?" — "+it.doc:"")+" · "+t("clickCode");
+    if(it.helper)g.setAttribute("opacity",".55");
+    g.style.cursor="pointer";
+    g.addEventListener("click",ev=>{ev.stopPropagation();
+      if(ev.shiftKey||GRAPH.focus===it.id)setFocus(GRAPH.focus===it.id?null:it.id);
+      else if(it.kind==="var")setFocus(it.id);
+      else openCode(it.id);});
+    g.addEventListener("dblclick",()=>setFocus(it.id));
+    nodeEls[it.id]=g;
+  });
+  applyFocus();
 }
-MODEL.edges.forEach(e=>{
-  const p=edgePath(e.from,e.to);if(!p)return;
-  edgeEls[e.from+"->"+e.to]=el("path",{d:p,class:"edge"+(e.conditional?" cond":"")});
-});
-
-const nodeEls={};
-function fitText(txt,max){return txt.length>max?txt.slice(0,max-1)+"…":txt}
-for(const id in nodes){
-  const n=nodes[id],g=el("g",{class:"node"});
-  el("rect",{x:n.x,y:n.y,width:n.w,height:n.h},g);
-  const name=el("text",{x:n.x+9,y:n.y+18},g);
-  name.textContent=fitText(shortName(id),26);
-  const f=fnById[id];
-  const sub=el("text",{x:n.x+9,y:n.y+33,class:"sub"},g);
-  sub.textContent=f?fitText(f.kind+(f.args&&f.args.length?"("+f.args.join(", ")+")":"()"),30):"";
-  const ttl=el("title",{},g);ttl.textContent=ownerName(id)+(f&&f.doc?" — "+f.doc:"")+" · "+t("clickCode");
-  if(f&&f.helper)g.setAttribute("opacity","0.5");
-  g.style.cursor="pointer";
-  g.addEventListener("click",()=>openCode(id));
-  nodeEls[id]=g;
+function marker(id,color){
+  return "<marker id='"+id+"' viewBox='0 0 10 10' refX='9' refY='5' "
+    +"markerWidth='6' markerHeight='6' orient='auto-start-reverse'>"
+    +"<path d='M0,0 L10,5 L0,10 z' fill='"+color+"'/></marker>";
 }
+function linkPath(l){
+  const A=nodes[l.from],B=nodes[l.to];if(!A||!B)return null;
+  const a={x:A.x+NW/2,y:A.y+NH/2},b={x:B.x+NW/2,y:B.y+NH/2};
+  const dx=b.x-a.x,dy=b.y-a.y;
+  const ax=a.x+(Math.abs(dx)>Math.abs(dy)?(dx>0?NW/2:-NW/2):0);
+  const ay=a.y+(Math.abs(dy)>=Math.abs(dx)?(dy>0?NH/2:-NH/2):0);
+  const bx=b.x-(Math.abs(dx)>Math.abs(dy)?(dx>0?NW/2:-NW/2):0);
+  const by=b.y-(Math.abs(dy)>=Math.abs(dx)?(dy>0?NH/2:-NH/2):0);
+  const mx=(ax+bx)/2;
+  return "M "+ax+" "+ay+" C "+mx+" "+ay+", "+mx+" "+by+", "+bx+" "+by;
+}
+
+/* ---- focus: dim everything not connected to one item ---- */
+function setFocus(id){GRAPH.focus=id;applyFocus();}
+function applyFocus(){
+  const f=GRAPH.focus;
+  const keep={};
+  if(f){
+    keep[f]=1;
+    visibleLinks().forEach(l=>{if(l.from===f)keep[l.to]=1;if(l.to===f)keep[l.from]=1});
+  }
+  for(const id in nodeEls)
+    nodeEls[id].classList.toggle("dim",!!f&&!keep[id]);
+  for(const k in edgeEls){
+    const [a,b]=k.split("->");
+    edgeEls[k].classList.toggle("dim",!!f&&a!==f&&b!==f);
+  }
+  const btn=document.getElementById("btnClearFocus");
+  if(btn)btn.style.display=f?"inline-flex":"none";
+}
+function zoomBy(d){setZoom(GRAPH.zoom+d)}
+function zoomReset(){setZoom(1)}
+function setZoom(z){
+  GRAPH.zoom=Math.max(.3,Math.min(2.5,z));
+  svg.setAttribute("width",Math.round(svgW*GRAPH.zoom));
+  svg.setAttribute("height",Math.round(svgH*GRAPH.zoom));
+  const el2=document.getElementById("zoomPct");
+  if(el2)el2.textContent=Math.round(GRAPH.zoom*100)+"%";
+}
+function renderFilters(){
+  const box=document.getElementById("gfilters");if(!box)return;
+  const defs=[["script","fScript"],["func","fFunc"],["expr","fExpr"],
+              ["var","fVar"],["flow","fFlow"]];
+  box.innerHTML="";
+  defs.forEach(([k,key])=>{
+    const n=k==="flow"?(MODEL.flows||[]).length
+                      :ITEMS.filter(i=>i.kind===k).length;
+    if(!n)return;
+    const b=document.createElement("button");
+    b.className="f-"+k+(GRAPH.show[k]?" on":"");
+    b.textContent=t(key)+" "+n;
+    b.onclick=()=>{GRAPH.show[k]=!GRAPH.show[k];renderFilters();
+                   renderGraph();renderState(cur)};
+    box.appendChild(b);
+  });
+}
+function renderLegend(){
+  const L=document.getElementById("legend");if(!L)return;
+  const sw=(c,txt)=>`<span><i style="background:${c}"></i>${txt}</span>`;
+  const ln=(c,dash,txt)=>`<span><span class="ln" style="border-top-color:${c};`
+    +(dash?"border-top-style:dashed;":"")+`"></span>${txt}</span>`;
+  L.innerHTML=sw("var(--c-script)",t("fScript"))+sw("var(--c-func)",t("fFunc"))
+    +sw("var(--c-expr)",t("fExpr"))+sw("var(--c-var)",t("fVar"))
+    +ln("var(--edge)",false,t("legCall"))+ln("var(--edge-cond)",true,t("legCond"))
+    +ln("var(--flow-read)",true,t("legRead"))+ln("var(--flow-write)",true,t("legWrite"))
+    +`<span class="k">${t("focusHint")}</span>`;
+}
+function setLayout(k){GRAPH.layout=k;renderGraph();renderState(cur);
+  document.querySelectorAll("#layoutSel button").forEach(b=>
+    b.classList.toggle("on",b.getAttribute("data-l")===k));}
 
 /* ------------------------------------------------ code view ----
    Every element is traceable: the viewer shows either the exact code
@@ -1223,9 +1491,9 @@ function renderLens(){
 let cur=-1,playing=false,timer=null;
 function renderState(i){
   cur=i;
-  for(const id in nodeEls)nodeEls[id].setAttribute("class","node");
-  for(const k in edgeEls)edgeEls[k].setAttribute("class",
-      edgeEls[k].getAttribute("class").replace(/ lit| cur/g,""));
+  // only the state classes change here - the item kind and focus classes stay
+  for(const id in nodeEls)nodeEls[id].classList.remove("visited","current");
+  for(const k in edgeEls)edgeEls[k].classList.remove("lit","cur");
   const tray=document.getElementById("tray");tray.innerHTML="";
   const visited=new Set();
   for(let k=0;k<=i&&k<steps.length;k++){
@@ -1233,23 +1501,23 @@ function renderState(i){
     visited.add(s.owner);
     if(s.type==="call"){visited.add(s.target);
       const e=edgeEls[s.owner+"->"+s.target];
-      if(e&&!e.getAttribute("class").includes("lit"))
-        e.setAttribute("class",e.getAttribute("class")+" lit");}
+      if(e)e.classList.add("lit");}
     if(s.type==="effect"&&s.kind!=="log"){
       const c=document.createElement("span");
       c.className="chip "+(s.kind==="error"?"err":s.kind);
       c.textContent=FX_ICON[s.kind]+" "+(s.detail||s.kind)+(s.count>1?" ×"+s.count:"");
       tray.appendChild(c);}
   }
-  visited.forEach(id=>{if(nodeEls[id])nodeEls[id].setAttribute("class","node visited")});
+  visited.forEach(id=>{if(nodeEls[id])nodeEls[id].classList.add("visited")});
   const s=steps[i];
   if(s){
     const focus=s.type==="call"?s.target:s.owner;
-    if(nodeEls[focus])nodeEls[focus].setAttribute("class","node current");
+    if(nodeEls[focus]){nodeEls[focus].classList.remove("visited");
+                       nodeEls[focus].classList.add("current")}
     if(s.type==="call"){
-      if(nodeEls[s.owner])nodeEls[s.owner].setAttribute("class","node visited");
+      if(nodeEls[s.owner])nodeEls[s.owner].classList.add("visited");
       const e=edgeEls[s.owner+"->"+s.target];
-      if(e)e.setAttribute("class",e.getAttribute("class")+" cur");
+      if(e)e.classList.add("cur");
     }
     if(view==="flow")followNode(focus);
   }
@@ -1400,6 +1668,8 @@ function setView(v){
   document.getElementById("viewStory").className=v==="story"?"on":"";
   document.getElementById("viewLens").className=v==="lens"?"on":"";
   document.getElementById("diagramWrap").style.display=v==="flow"?"block":"none";
+  document.getElementById("gbar").classList.toggle("on",v==="flow");
+  document.getElementById("legend").classList.toggle("on",v==="flow");
   document.getElementById("chart").style.display=v==="chart"?"flex":"none";
   document.getElementById("story").style.display=v==="story"?"block":"none";
   document.getElementById("lens").style.display=v==="lens"?"block":"none";
@@ -1408,6 +1678,7 @@ function setView(v){
 }
 function rebuild(keep){
   computeSteps();
+  renderFilters();renderLegend();renderGraph();
   renderOverview();renderStepList();renderStory();renderChart();
   renderState(Math.min(Math.max(0,keep),Math.max(0,steps.length-1)));
 }

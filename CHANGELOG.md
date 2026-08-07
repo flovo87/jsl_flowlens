@@ -4,6 +4,29 @@ All notable changes to JSL FlowLens are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project
 uses [semantic versioning](https://semver.org/).
 
+## [0.6.0] — 2026-08-07
+
+Second batch of the continuous-improvement list (items B, D and E).
+
+### Added
+- **Variables are graph items.** The parser now finds every top-level
+  assignment and works out which component writes it and which reads it, so
+  the Flow view shows producer → variable → consumer chains with directed
+  **read** (blue, dashed) and **write** (orange, dashed) links.
+- **Four layouts** for the Flow view — hierarchical (layered by call depth),
+  swimlane (one lane per file), circular and grid.
+- **Show/hide filters** per item type — scripts, functions, expressions,
+  variables, dataflow — each showing its count.
+- **Zoom** in / out / reset, and **focus**: double-click an item to dim
+  everything not connected to it, with a *Clear focus* button.
+- A legend for item kinds and link types.
+
+### Changed
+- **JMP colour scheme throughout.** Orange `#FE5A22` for actions and the
+  current step, blue `#1570C8` for structure and calls, purple `#92509E` for
+  expressions and Python, dark blue `#0B3D75` for script roots. Coverage
+  states moved onto the same palette: blue for reached, orange for the gaps.
+
 ## [0.5.0] — 2026-08-07
 
 First batch of the continuous-improvement list (items A, C and G).

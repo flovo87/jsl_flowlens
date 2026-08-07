@@ -4,7 +4,7 @@
 a whole `.jmpaddin`, or pasted code — and get a plain-language explanation plus
 an animated, traceable visualization of how it runs.
 
-Version 0.5.0 · JMP 18+ · MIT License
+Version 0.6.0 · JMP 18+ · MIT License
 
 ---
 
