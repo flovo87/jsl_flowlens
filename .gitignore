@@ -1,0 +1,21 @@
+# Build output - published through GitHub Releases, not committed
+dist/
+*.jmpaddin
+
+# Third-party reference material (not ours to redistribute)
+reference/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OneDrive / office lock files
+~$*
+*.tmp

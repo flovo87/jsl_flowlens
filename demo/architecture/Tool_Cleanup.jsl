@@ -1,0 +1,28 @@
+// Tool_Cleanup.jsl - second sub-tool: tidies the table
+
+Names Default To Here(1);
+
+min_rows = 10;
+
+RunCleanupTool = Function({dt},
+	{n, i},
+
+	Show("Cleanup tool started");
+
+	n = N Rows(dt);
+	If(n < min_rows,
+		Throw("Table is too small to clean up")
+	);
+
+	dt << New Column("Flagged", Numeric, Nominal,
+		Formula(If(:weight > 100, 1, 0))
+	);
+	dt << Run Formulas;
+
+	For(i = 1, i <= N Cols(dt), i++,
+		Column(dt, i) << Set Property("Notes", "checked")
+	);
+
+	dt << Select Where(:Flagged == 1);
+	dt << Hide and Exclude;
+);

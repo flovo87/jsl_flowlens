@@ -1,0 +1,62 @@
+// Report.jsl — statistics, report window and export for Quality Snapshot
+
+Names Default To Here(1);
+
+// Computes summary statistics of the Measurement column
+ComputeStats = Function({dt},
+	{vals, stats},
+
+	Show("Computing statistics...");
+
+	vals = Column(dt, "Measurement") << Get Values;
+
+	stats = [
+		"mean"  => Mean(vals),
+		"std"   => Std Dev(vals),
+		"min"   => Min(vals),
+		"max"   => Max(vals),
+		"n"     => N Items(vals)
+	];
+
+	stats;
+);
+
+// Opens a small report window with the computed statistics
+ShowReport = Function({stats},
+	{win},
+
+	Show("Opening report window...");
+
+	win = New Window(report_title,
+		V List Box(
+			Text Box("Quality Snapshot Report"),
+			Text Box("Mean:  " || FormatValue(stats["mean"], 2)),
+			Text Box("Std:   " || FormatValue(stats["std"], 2)),
+			Text Box("Range: " || FormatValue(stats["min"], 2)
+				|| " ... " || FormatValue(stats["max"], 2)),
+			Text Box("N:     " || Char(stats["n"]))
+		)
+	);
+
+	win;
+);
+
+// Writes the statistics to a text file; reports failure without stopping
+ExportReport = Function({stats, filepath},
+	{txt, status},
+
+	Show("Exporting report...");
+
+	txt = "Quality Snapshot\!nMean: " || Char(stats["mean"])
+		|| "\!nStd: " || Char(stats["std"])
+		|| "\!nN: " || Char(stats["n"]);
+
+	Try(
+		Save Text File(filepath, txt);
+		status = 1,
+		Show("Export failed: " || filepath);
+		status = 0
+	);
+
+	status;
+);

@@ -1,0 +1,17 @@
+<jm:menu_and_toolbar_customizations xmlns:jm="http://www.jmp.com/ns/menu" version="3">
+  <jm:insert_in_main_menu>
+    <jm:insert_in_menu>
+      <jm:name>ADD-INS</jm:name>
+      <jm:insert_after>
+        <jm:name></jm:name>
+        <jm:command>
+          <jm:name>JSL_FLOWLENS</jm:name>
+          <jm:caption>JSL FlowLens</jm:caption>
+          <jm:action type="path">$ADDIN_HOME(FVT.JSLFlowLens)/FlowLens.jsl</jm:action>
+          <jm:tip>Explain and animate how a JSL script works</jm:tip>
+          <jm:icon type="path">$ADDIN_HOME(FVT.JSLFlowLens)/icon.png</jm:icon>
+        </jm:command>
+      </jm:insert_after>
+    </jm:insert_in_menu>
+  </jm:insert_in_main_menu>
+</jm:menu_and_toolbar_customizations>

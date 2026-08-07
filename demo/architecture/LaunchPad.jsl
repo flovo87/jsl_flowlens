@@ -1,0 +1,54 @@
+// LaunchPad.jsl - demo of an add-in that branches into separate tools
+// The user picks a tool in a dialog; each button launches a different
+// sub-script, and each of those produces its own output.
+
+Names Default To Here(1);
+
+Include("Tool_Report.jsl");
+Include("Tool_Cleanup.jsl");
+
+data_folder = "$SAMPLE_DATA";
+default_table = "Big Class.jmp";
+
+// Loads the table both tools work on
+LoadSource = Function({name},
+	{dt},
+	dt = Open(data_folder || "/" || name);
+	dt;
+);
+
+// The launch pad: one choice, three different outcomes
+ShowLaunchPad = Function({},
+	{win, dt},
+
+	dt = LoadSource(default_table);
+
+	win = New Window("Analysis Launch Pad",
+		V List Box(
+			Text Box("Choose what to run:"),
+			Button Box("Quality report",
+				RunReportTool(dt)
+			),
+			Button Box("Clean up the table",
+				RunCleanupTool(dt)
+			),
+			Button Box("Both, then export",
+				RunReportTool(dt);
+				RunCleanupTool(dt);
+				ExportSummary(dt);
+			),
+			Button Box("Cancel")
+		)
+	);
+
+	win;
+);
+
+// Writes a combined summary once both tools have run
+ExportSummary = Function({dt},
+	{txt},
+	txt = "Rows: " || Char(N Rows(dt));
+	Save Text File("$DOCUMENTS/launchpad_summary.txt", txt);
+);
+
+ShowLaunchPad();

@@ -1,0 +1,53 @@
+// Utils.jsl — data creation and validation helpers for Quality Snapshot
+
+Names Default To Here(1);
+
+// Builds a demo data table with measurement values and a batch label
+BuildDemoTable = Function({n_rows},
+	{dt},
+
+	Show("Building demo table...");
+
+	dt = New Table("Snapshot Data",
+		Add Rows(n_rows),
+		New Column("Part ID", Numeric, Continuous, Formula(Row())),
+		New Column("Measurement", Numeric, Continuous,
+			Formula(Random Normal(50, 4))
+		),
+		New Column("Batch", Character, Nominal,
+			Formula(Choose(Mod(Row(), 4) + 1, "B1", "B2", "B3", "B4"))
+		)
+	);
+
+	dt << Run Formulas;
+
+	// Freeze values so the demo is reproducible within a session
+	For(i = 1, i <= N Cols(dt), i++,
+		Column(dt, i) << Delete Formula
+	);
+
+	dt;
+);
+
+// Checks that all required columns exist in the table
+CheckColumns = Function({dt},
+	{ok, needed},
+
+	ok = 1;
+	needed = {"Part ID", "Measurement", "Batch"};
+
+	For(i = 1, i <= N Items(needed), i++,
+		Try(
+			Column(dt, needed[i]),
+			Show("Missing column: " || needed[i]);
+			ok = 0
+		)
+	);
+
+	ok;
+);
+
+// Rounds a number to a fixed number of decimals and returns it as text
+FormatValue = Function({x, decimals},
+	Char(Round(x, decimals))
+);

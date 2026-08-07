@@ -1,0 +1,25 @@
+// Tool_Report.jsl - first sub-tool: builds a report from the table
+
+Names Default To Here(1);
+
+report_title = "Quality Report";
+
+RunReportTool = Function({dt},
+	{gb, dist},
+
+	Show("Report tool started");
+
+	gb = dt << Graph Builder(
+		Size(600, 450),
+		Variables(X(:height), Y(:weight)),
+		Elements(Points(X, Y), Line Of Fit(X, Y))
+	);
+
+	dist = dt << Distribution(
+		Continuous Distribution(Column(:weight))
+	);
+
+	New Window(report_title,
+		V List Box(Text Box("Report complete"))
+	);
+);

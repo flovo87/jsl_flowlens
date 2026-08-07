@@ -1,0 +1,861 @@
+// ============================================================
+// JSL FlowLens v0.5.0
+// Understand any JMP script: JSL, Python, JMP Notebooks or a whole
+// add-in - explained, animated and traceable to the source lines.
+//
+// Requires: JMP 18 or newer (Python is built in - no setup needed).
+// License: MIT. Copyright (c) 2026 Florian.
+// ============================================================
+
+Names Default To Here(1);
+
+sl_version = "0.5.0";
+sl_build = "2026-08-07";
+sl_addin_id = "FVT.JSLFlowLens";
+sl_settings_path = "$DOCUMENTS/JSL_FlowLens_Settings.txt";
+
+// ------------------------------------------------------------
+// Locate program folder (add-in home; falls back to a picker
+// during development when the add-in is not installed)
+// ------------------------------------------------------------
+sl_home = "";
+Try(
+	sl_home = Convert File Path("$ADDIN_HOME(" || sl_addin_id || ")/", Absolute)
+);
+If(Is Missing(sl_home) | sl_home == "" | !File Exists(sl_home || "flowlens_parser.py"),
+	sl_home = Pick Directory("JSL FlowLens: select the program folder (contains flowlens_parser.py)");
+	sl_home = Convert File Path(sl_home, Absolute);
+);
+
+// ------------------------------------------------------------
+// Settings (persisted as key=value lines)
+// ------------------------------------------------------------
+sl_settings = [
+	"provider" => "anthropic",
+	"endpoint" => "https://api.anthropic.com/v1/messages",
+	"model" => "claude-sonnet-4-5",
+	"apikey" => "",
+	"lang" => "en"
+];
+
+LoadSettings_func = Function({},
+	{txt, lines, i, p, key, val},
+	Try(
+		txt = Load Text File(sl_settings_path);
+		lines = Words(txt, "\!n");
+		For(i = 1, i <= N Items(lines), i++,
+			p = Contains(lines[i], "=");
+			If(p > 1,
+				key = Trim(Left(lines[i], p - 1));
+				val = Trim(Substr(lines[i], p + 1));
+				sl_settings[key] = val;
+			);
+		);
+	);
+);
+
+SaveSettings_func = Function({},
+	{keys, txt, i},
+	keys = sl_settings << Get Keys;
+	txt = "";
+	For(i = 1, i <= N Items(keys), i++,
+		txt = txt || keys[i] || "=" || Char(sl_settings[keys[i]]) || "\!n"
+	);
+	Try(Save Text File(sl_settings_path, txt));
+);
+
+LoadSettings_func();
+
+// ------------------------------------------------------------
+// Translations (EN / DE)
+// ------------------------------------------------------------
+GetText = Function({key},
+	{txt},
+	If(sl_settings["lang"] == "de",
+		txt = Match(key,
+			"win_title", "JSL FlowLens",
+			"subtitle", "So funktioniert ein Skript — JSL, Python und JMP-Notebooks, erklärt und animiert.",
+			"files_hdr", "Zu analysierende Eingaben",
+			"outline_load", "1. Dateien/Skripte laden",
+			"outline_analyze", "2. Analysieren",
+			"tab_files", "Dateiauswahl",
+			"tab_paste", "Code einfügen",
+			"select_files", "Skriptdatei(en) zur Analyse wählen - .jsl, .py oder .jmpnb:",
+			"btn_remove", "Ausgewählte entfernen",
+			"btn_add_files", "Skriptdatei(en) hinzufügen...",
+			"btn_add_addin", "Add-In (.jmpaddin) laden...",
+			"btn_paste", "Code einfügen...",
+			"btn_demo", "Demo laden",
+			"btn_clear", "Alles entfernen",
+			"entry_lbl", "Startdatei:",
+			"entry_auto", "(automatisch)",
+			"btn_analyze", "Analysieren",
+			"btn_settings", "KI-Einstellungen...",
+			// Kurzerklärungen (sichtbare Hinweise)
+			"app_title", "JSL FlowLens",
+			"status_empty", "Noch nichts geladen - Dateien hinzufügen oder Code einfügen.",
+			"status_ready", "Bereit zur Analyse:",
+			"status_files", "Datei(en)",
+			"status_addin", "Add-In",
+			"status_pasted", "eingefügter Code",
+			"hint_load", "Dateien und eingefügten Code können Sie kombinieren.",
+			"hint_files", "JSL, Python und JMP-Notebooks. Mehrfachauswahl mit Strg/Umschalt; Add-In = alle enthaltenen Skripte.",
+			"hint_paste", "JSL oder Python einfügen, dann unten auf 'Analysieren' klicken.",
+			"hint_clear", "Leert Dateiliste UND eingefügten Code.",
+			"outline_entry", "Startskript (erweitert)",
+			"lang_lbl", "Sprache:",
+			"hint_entry", "Das Skript, das ZUERST läuft - dort beginnt die Animation, die dann seinen Aufrufen in die anderen Dateien folgt.",
+			"hint_entry2", "Module, die per Include() eingebunden werden, sind keine Startskripte. '(automatisch)' passt fast immer.",
+			"hint_analyze", "Erzeugt die Erklärung und öffnet sie im Browser.",
+			"hint_ai", "Optional: ausführlichere Erklärung per KI. Nichts wird ohne Bestätigung gesendet.",
+			// Tooltips
+			"tip_add_files", ".jsl-, .py- oder .jmpnb-Dateien von der Festplatte auswählen (Strg/Umschalt für mehrere).",
+			"tip_remove", "Markierte Einträge aus der Liste oben entfernen.",
+			"tip_add_addin", "Ein fertiges JMP-Add-In (.jmpaddin) laden: alle enthaltenen Skripte werden analysiert, die Startdatei aus dem Menü erkannt.",
+			"tip_demo", "Das mitgelieferte Drei-Datei-Beispiel laden, um das Ergebnis kennenzulernen.",
+			"tip_clear", "Dateiliste und eingefügten Code vollständig leeren.",
+			"tip_entry", "Das Skript, in dem die Ausführung beginnt. Bei mehreren Dateien bestimmt es den Startpunkt der Animation.",
+			"tip_analyze", "Eingaben auswerten und die animierte Erklärung im Browser öffnen.",
+			"tip_settings", "KI-Endpoint, Modell und API-Schlüssel für 'KI über API fragen'.",
+			"tip_ai_call", "Skripttext an den konfigurierten KI-Endpoint senden (mit Bestätigung).",
+			"tip_ai_copy", "Fertigen Prompt in die Zwischenablage kopieren - ohne API-Schlüssel nutzbar.",
+			"tip_ai_paste", "Eine KI-Antwort einfügen und anzeigen.",
+			"ai_hdr", "KI-Erklärung (optional)",
+			"btn_ai_call", "KI über API fragen",
+			"btn_ai_copy", "KI-Prompt kopieren",
+			"btn_ai_paste", "KI-Antwort einfügen...",
+			"paste_title", "JSL-Code einfügen",
+			"paste_prompt", "Fügen Sie Ihren JSL- oder Python-Code hier ein:",
+			"ok", "OK",
+			"cancel", "Abbrechen",
+			"nothing_title", "Keine Eingabe",
+			"nothing_msg", "Bitte fügen Sie zuerst Dateien, ein Add-In oder Code hinzu.",
+			"result_title", "JSL FlowLens — Ergebnis",
+			"btn_ext_browser", "Im Browser öffnen",
+			"btn_copy_path", "Dateipfad kopieren",
+			"settings_title", "JSL FlowLens — KI-Einstellungen",
+			"set_hint", "Nur für 'KI über API fragen' nötig. Alles andere funktioniert auch ohne.",
+			"set_provider", "KI-Anbieter:",
+			"set_endpoint", "Endpoint-URL:",
+			"set_model", "Modell:",
+			"set_key", "API-Schlüssel:",
+			"set_lang", "Sprache:",
+			"consent_title", "Daten senden?",
+			"consent_msg1", "Der Skripttext wird an folgenden Endpoint gesendet:",
+			"consent_msg2", "Fortfahren?",
+			"ai_answer_title", "KI-Erklärung",
+			"btn_copy", "Kopieren",
+			"prompt_title", "KI-Prompt (in Zwischenablage kopiert)",
+			"prompt_hint", "In eine beliebige KI-Chat-Anwendung einfügen, Antwort zurückkopieren und über 'KI-Antwort einfügen...' anzeigen.",
+			"paste_answer_prompt", "KI-Antwort hier einfügen:",
+			"no_key_title", "Kein API-Schlüssel",
+			"no_key_msg", "Bitte hinterlegen Sie einen API-Schlüssel in den Einstellungen oder nutzen Sie 'KI-Prompt kopieren'.",
+			"err_title", "Fehler",
+			"err_analysis", "Analyse fehlgeschlagen. Details siehe Log (Ansicht > Log).",
+			"err_python", "JMPs Python ist nicht erreichbar. FlowLens benötigt JMP 18 oder neuer - dort ist Python enthalten und muss nicht eingerichtet werden.",
+			"err_http", "API-Aufruf fehlgeschlagen. Endpoint, Modell und Schlüssel prüfen.",
+			"pasted_marker", "[Eingefügter Code]",
+			"addin_marker", "[Add-In] "
+		),
+		txt = Match(key,
+			"win_title", "JSL FlowLens",
+			"subtitle", "How a script works — JSL, Python and JMP Notebooks, explained and animated.",
+			"files_hdr", "Inputs to analyze",
+			"outline_load", "1. Load your files/scripts",
+			"outline_analyze", "2. Analyze",
+			"tab_files", "File Selection",
+			"tab_paste", "Paste Code",
+			"select_files", "Select the script file(s) to analyze - .jsl, .py or .jmpnb:",
+			"btn_remove", "Remove Selected",
+			"btn_add_files", "Add script file(s)...",
+			"btn_add_addin", "Load add-in (.jmpaddin)...",
+			"btn_paste", "Paste code...",
+			"btn_demo", "Load demo",
+			"btn_clear", "Clear all",
+			"entry_lbl", "Entry file:",
+			// Short explanations (visible hints)
+			"app_title", "JSL FlowLens",
+			"status_empty", "Nothing loaded yet - add files or paste code.",
+			"status_ready", "Ready to analyze:",
+			"status_files", "file(s)",
+			"status_addin", "add-in",
+			"status_pasted", "pasted code",
+			"hint_load", "You can combine picked files and pasted code.",
+			"hint_files", "JSL, Python and JMP Notebooks. Ctrl/Shift for multiple; add-in = every script inside it.",
+			"hint_paste", "Paste JSL or Python here, then click 'Analyze' below.",
+			"hint_clear", "Empties the file list AND the pasted code.",
+			"outline_entry", "Start script (advanced)",
+			"lang_lbl", "Language:",
+			"hint_entry", "The script that runs FIRST - the animation starts there and follows its calls into the other files.",
+			"hint_entry2", "Modules that another file pulls in with Include() are not start scripts. Leave on '(auto)' unless you loaded several unrelated scripts.",
+			"hint_analyze", "Builds the explanation and opens it in your browser.",
+			"hint_ai", "Optional: a richer explanation via AI. Nothing is sent without your confirmation.",
+			// Tooltips
+			"tip_add_files", "Select .jsl, .py or .jmpnb files from disk (Ctrl/Shift for multiple).",
+			"tip_remove", "Remove the highlighted entries from the list above.",
+			"tip_add_addin", "Load a packaged JMP add-in (.jmpaddin): every script inside is analyzed and the menu entry point is detected.",
+			"tip_demo", "Load the bundled three-file example to see what the output looks like.",
+			"tip_clear", "Completely empty the file list and the pasted code.",
+			"tip_entry", "The script where execution begins. With several files it decides where the animation starts.",
+			"tip_analyze", "Parse the inputs and open the animated explanation in your browser.",
+			"tip_settings", "AI endpoint, model and API key for 'Ask AI via API'.",
+			"tip_ai_call", "Send the script text to the configured AI endpoint (asks for confirmation first).",
+			"tip_ai_copy", "Copy a ready-made prompt to the clipboard - works without an API key.",
+			"tip_ai_paste", "Paste an AI answer back in to display it.",
+			"entry_auto", "(auto)",
+			"btn_analyze", "Analyze",
+			"btn_settings", "AI settings...",
+			"ai_hdr", "AI explanation (optional)",
+			"btn_ai_call", "Ask AI via API",
+			"btn_ai_copy", "Copy AI prompt",
+			"btn_ai_paste", "Paste AI answer...",
+			"paste_title", "Paste JSL code",
+			"paste_prompt", "Paste your JSL or Python code here:",
+			"ok", "OK",
+			"cancel", "Cancel",
+			"nothing_title", "No input",
+			"nothing_msg", "Please add files, an add-in, or pasted code first.",
+			"result_title", "JSL FlowLens — Result",
+			"btn_ext_browser", "Open in browser",
+			"btn_copy_path", "Copy file path",
+			"settings_title", "JSL FlowLens — AI settings",
+			"set_hint", "Only needed for 'Ask AI via API'. Everything else works without it.",
+			"set_provider", "AI provider:",
+			"set_endpoint", "Endpoint URL:",
+			"set_model", "Model:",
+			"set_key", "API key:",
+			"set_lang", "Language:",
+			"consent_title", "Send data?",
+			"consent_msg1", "The script text will be sent to this endpoint:",
+			"consent_msg2", "Continue?",
+			"ai_answer_title", "AI explanation",
+			"btn_copy", "Copy",
+			"prompt_title", "AI prompt (copied to clipboard)",
+			"prompt_hint", "Paste it into any AI chat you are allowed to use, copy the answer back, and show it via 'Paste AI answer...'.",
+			"paste_answer_prompt", "Paste the AI answer here:",
+			"no_key_title", "No API key",
+			"no_key_msg", "Please set an API key in Settings, or use 'Copy AI prompt' instead.",
+			"err_title", "Error",
+			"err_analysis", "Analysis failed. See the log for details (View > Log).",
+			"err_python", "JMP's Python could not be reached. FlowLens requires JMP 18 or newer, where Python is included and needs no setup.",
+			"err_http", "API call failed. Check endpoint, model, and key.",
+			"pasted_marker", "[Pasted code]",
+			"addin_marker", "[Add-in] "
+		)
+	);
+	If(Is Missing(txt), txt = key);
+	txt;
+);
+
+// ------------------------------------------------------------
+// Display styling helpers
+// Message spellings differ between JMP versions, so every style
+// message is attempted defensively and simply skipped if absent.
+// ------------------------------------------------------------
+sl_accent = RGB Color(0.18, 0.43, 0.87);   // brand blue
+sl_muted = RGB Color(0.42, 0.47, 0.56);    // secondary grey
+sl_ok = RGB Color(0.18, 0.60, 0.38);       // ready green
+
+StyleBox_func = Function({box, size, style, color},
+	Try(box << Set Font Size(size));
+	If(style != "",
+		Try(box << Set Font Style(style))
+	);
+	Try(box << Font Color(color), Try(box << Set Font Color(color)));
+);
+
+BackColor_func = Function({box, color},
+	Try(box << Set Background Color(color), Try(box << Background Color(color)));
+);
+
+// ------------------------------------------------------------
+// Application state
+// ------------------------------------------------------------
+sl_files = {};   // list of absolute .jsl paths
+sl_addin = "";   // path of a .jmpaddin, or ""
+sl_pasted = "";  // pasted code, or ""
+
+// ------------------------------------------------------------
+// Python bridge
+// ------------------------------------------------------------
+// Python ships with JMP 18+ and is available immediately: neither
+// Python Init() (deprecated) nor Python Connect() is needed - Python Connect
+// only matters when a connection object is wanted. A tiny probe is kept so a
+// broken bridge gives a clear message instead of a parser error.
+EnsurePython_expr = Expr(
+	sl_py_ok = 0;
+	Try(
+		Python Submit("\[flowlens_probe = 1]\");
+		sl_py_ok = 1;
+	);
+	If(!sl_py_ok,
+		New Window(GetText("err_title"), <<Modal,
+			V List Box(Text Box(GetText("err_python")), Button Box(GetText("ok")))
+		);
+		Throw("python unavailable");
+	);
+);
+
+RunAnalysis_expr = Expr(
+	SyncPasted_expr;
+	If(N Items(sl_files) == 0 & sl_addin == "" & sl_pasted == "",
+		New Window(GetText("nothing_title"), <<Modal,
+			V List Box(Text Box(GetText("nothing_msg")), Button Box(GetText("ok")))
+		),
+		// else: run the parser via embedded Python
+		EnsurePython_expr;
+		sl_files_str = Concat Items(sl_files, "\!n");
+		sl_entry = "";
+		Try(
+			sl_entry = entry_cb << Get Selected;
+			If(sl_entry == GetText("entry_auto"), sl_entry = "");
+		);
+		sl_template = sl_home || "flowlens_template.html";
+		sl_out = Convert File Path(
+			"$TEMP/flowlens_" || Char(Random Integer(100000, 999999)) || ".html",
+			Absolute
+		);
+		Python Send(sl_home);
+		Python Send(sl_files_str);
+		Python Send(sl_addin);
+		Python Send(sl_pasted);
+		Python Send(sl_entry);
+		Python Send(sl_template);
+		Python Send(sl_out);
+		Try(
+			Python Submit("\[
+def _sl_native(p):
+    p = (p or '').strip()
+    if len(p) > 2 and p[0] == '/' and p[2] == ':':
+        p = p[1:]
+    return p
+
+_sl_src = _sl_native(sl_home) + 'flowlens_parser.py'
+_sl_ns = {}
+with open(_sl_src, encoding='utf-8') as _fh:
+    exec(_fh.read(), _sl_ns)
+sl_result = _sl_ns['run_simple'](sl_files_str, sl_addin, sl_pasted, sl_entry, sl_template, sl_out)
+]\");
+			sl_result = Python Get(sl_result);
+			ShowResult_func(sl_result);
+		,
+			Show("FlowLens analysis error:", exception_msg);
+			New Window(GetText("err_title"), <<Modal,
+				V List Box(Text Box(GetText("err_analysis")), Button Box(GetText("ok")))
+			);
+		);
+	);
+);
+
+// ------------------------------------------------------------
+// Result window
+// ------------------------------------------------------------
+// Opens the generated visualization directly in the system browser.
+// (Embedded Web Browser Box proved unreliable across JMP versions.)
+ShowResult_func = Function({html_path},
+	{url, posix},
+	posix = Convert File Path(html_path, POSIX);
+	If(Left(posix, 1) == "/", posix = Substr(posix, 2));
+	url = "file:///" || Substitute(posix, " ", "%20");
+	::sl_last_url = url;
+	::sl_last_html = html_path;
+	Web(url);
+);
+
+// ------------------------------------------------------------
+// AI support
+// ------------------------------------------------------------
+EscapeJSON_func = Function({s},
+	{r},
+	r = Substitute(s,
+		"\", "\\",
+		"\!"", "\\!"",
+		"\!n", "\n",
+		"\!r", "\r",
+		"\!t", "\t"
+	);
+	r;
+);
+
+BuildPrompt_func = Function({},
+	{txt, i, body, langname},
+	SyncPasted_expr;
+	langname = If(sl_settings["lang"] == "de", "German", "English");
+	txt = "You are an expert JMP JSL developer. Explain what this JSL application does for someone who did not write it. Structure the answer as: 1) Purpose, 2) Workflow step by step, 3) Key functions, 4) Side effects (data tables, windows, files). Be concise and concrete. Answer in "
+		|| langname || ".\!n\!n";
+	For(i = 1, i <= N Items(sl_files), i++,
+		Try(
+			body = Load Text File(sl_files[i]);
+			txt = txt || "=== FILE: " || sl_files[i] || " ===\!n" || body || "\!n\!n";
+		);
+	);
+	If(sl_pasted != "",
+		txt = txt || "=== PASTED CODE ===\!n" || sl_pasted || "\!n"
+	);
+	If(sl_addin != "",
+		txt = txt || "\!n(Note: an add-in archive was also selected: " || sl_addin
+			|| " — its scripts are not inlined here.)\!n"
+	);
+	If(Length(txt) > 30000,
+		txt = Left(txt, 30000) || "\!n[truncated]"
+	);
+	txt;
+);
+
+CallAI_func = Function({prompt},
+	{ep, key, model, hdrs, body, req, resp, parsed, answer},
+	ep = sl_settings["endpoint"];
+	key = sl_settings["apikey"];
+	model = sl_settings["model"];
+	If(sl_settings["provider"] == "anthropic",
+		hdrs = {"x-api-key: " || key, "anthropic-version: 2023-06-01",
+			"content-type: application/json"},
+		hdrs = {"Authorization: Bearer " || key, "content-type: application/json"}
+	);
+	body = "{\!"model\!": \!"" || model
+		|| "\!", \!"max_tokens\!": 2500, \!"messages\!": [{\!"role\!": \!"user\!", \!"content\!": \!""
+		|| EscapeJSON_func(prompt) || "\!"}]}";
+	answer = "";
+	Try(
+		req = New HTTP Request(
+			URL(ep),
+			Method("POST"),
+			Headers(hdrs),
+			Body(Char To Blob(body, "utf-8"))
+		);
+		resp = req << Send;
+		If(Is Blob(resp), resp = Blob To Char(resp, "utf-8"));
+		parsed = Parse JSON(resp);
+		answer = Try(parsed["content"][1]["text"],
+			Try(parsed["choices"][1]["message"]["content"], Char(resp))
+		);
+	,
+		Show("FlowLens AI error:", exception_msg);
+	);
+	answer;
+);
+
+ShowAIAnswer_func = Function({answer},
+	{win, teb},
+	win = New Window(GetText("ai_answer_title"),
+		V List Box(
+			teb = Text Edit Box(answer, <<Set Width(720), <<Set N Lines(28)),
+			H List Box(
+				Button Box(GetText("btn_copy"), Try(Set Clipboard(teb << Get Text)))
+			)
+		)
+	);
+	win;
+);
+
+// Consent dialog: continuation logic lives inside the OK button
+AICallWithConsent_expr = Expr(
+	If(sl_settings["apikey"] == "",
+		New Window(GetText("no_key_title"), <<Modal,
+			V List Box(Text Box(GetText("no_key_msg")), Button Box(GetText("ok")))
+		),
+		New Window(GetText("consent_title"), <<Modal,
+			V List Box(
+				Text Box(GetText("consent_msg1")),
+				Text Box(sl_settings["endpoint"]),
+				Text Box(GetText("consent_msg2")),
+				H List Box(
+					Button Box(GetText("ok"),
+						sl_ai_answer = CallAI_func(BuildPrompt_func());
+						If(sl_ai_answer == "",
+							New Window(GetText("err_title"), <<Modal,
+								V List Box(Text Box(GetText("err_http")),
+									Button Box(GetText("ok")))
+							),
+							ShowAIAnswer_func(sl_ai_answer)
+						);
+					),
+					Button Box(GetText("cancel"))
+				)
+			)
+		)
+	);
+);
+
+CopyPrompt_expr = Expr(
+	sl_prompt = BuildPrompt_func();
+	Try(Set Clipboard(sl_prompt));
+	New Window(GetText("prompt_title"),
+		V List Box(
+			Text Box(GetText("prompt_hint"), <<Set Wrap(600)),
+			Text Edit Box(sl_prompt, <<Set Width(700), <<Set N Lines(20))
+		)
+	);
+);
+
+PasteAnswer_expr = Expr(
+	New Window(GetText("btn_ai_paste"), <<Modal,
+		V List Box(
+			Text Box(GetText("paste_answer_prompt")),
+			paste_ans_teb = Text Edit Box("", <<Set Width(700), <<Set N Lines(18)),
+			H List Box(
+				Button Box(GetText("ok"),
+					ShowAIAnswer_func(paste_ans_teb << Get Text)
+				),
+				Button Box(GetText("cancel"))
+			)
+		)
+	);
+);
+
+// ------------------------------------------------------------
+// Input management
+// ------------------------------------------------------------
+RefreshInputs_expr = Expr(
+	sl_display = {};
+	If(sl_addin != "",
+		Insert Into(sl_display, GetText("addin_marker") || sl_addin)
+	);
+	For(i = 1, i <= N Items(sl_files), i++,
+		Insert Into(sl_display, sl_files[i])
+	);
+	Try(files_lb << Set Items(sl_display));
+	// entry combo: auto + basenames
+	sl_entries = {};
+	Insert Into(sl_entries, GetText("entry_auto"));
+	For(i = 1, i <= N Items(sl_files), i++,
+		Insert Into(sl_entries, Word(-1, sl_files[i], "/"))
+	);
+	Try(entry_cb << Set Items(sl_entries));
+	UpdateStatus_expr;
+);
+
+// Bottom status line: what is currently loaded (accent when ready)
+UpdateStatus_expr = Expr(
+	sl_parts = {};
+	If(N Items(sl_files) > 0,
+		Insert Into(sl_parts,
+			Char(N Items(sl_files)) || " " || GetText("status_files"))
+	);
+	If(sl_addin != "", Insert Into(sl_parts, GetText("status_addin")));
+	sl_paste_txt = "";
+	Try(sl_paste_txt = paste_teb << Get Text);
+	If(!Is Missing(sl_paste_txt) & sl_paste_txt != "",
+		Insert Into(sl_parts, GetText("status_pasted"))
+	);
+	Try(
+		If(N Items(sl_parts) == 0,
+			status_tb << Set Text(GetText("status_empty"));
+			StyleBox_func(status_tb, 10, "Bold", sl_muted);
+		,
+			status_tb << Set Text(GetText("status_ready") || " "
+				|| Concat Items(sl_parts, ", "));
+			StyleBox_func(status_tb, 10, "Bold", sl_ok);
+		);
+	);
+);
+
+// Adds one or more .jsl files. The 7th Pick File argument is the
+// multi-select flag (Boolean); a string there makes the call fail.
+AddFiles_expr = Expr(
+	sl_picked = Empty();
+	Try(
+		sl_picked = Pick File(
+			GetText("btn_add_files"),
+			"$DOCUMENTS",
+			{"Scripts|jsl;py;jmpnb", "JSL|jsl", "Python|py", "JMP Notebook|jmpnb", "All Files|*"},
+			1,   // initial filter
+			0,   // 0 = open (not save)
+			"",  // default file name
+			1    // allow multiple selection
+		);
+	,
+		// Fallback for JMP versions with a shorter signature
+		Try(sl_picked = Pick File(GetText("btn_add_files")));
+	);
+	AddPickedFiles_expr;
+);
+
+// Merges whatever Pick File returned (string or list) into sl_files
+AddPickedFiles_expr = Expr(
+	If(Is List(sl_picked),
+		For(i = 1, i <= N Items(sl_picked), i++,
+			sl_one = sl_picked[i];
+			If(Is String(sl_one) & sl_one != "" & !Contains(sl_files, sl_one),
+				Insert Into(sl_files, sl_one)
+			);
+		),
+		If(Is String(sl_picked) & sl_picked != "" & !Contains(sl_files, sl_picked),
+			Insert Into(sl_files, sl_picked)
+		)
+	);
+	RefreshInputs_expr;
+);
+
+AddAddin_expr = Expr(
+	sl_picked = Empty();
+	Try(
+		sl_picked = Pick File(GetText("btn_add_addin"), "$DOCUMENTS",
+			{"JMP Add-In|jmpaddin", "All Files|*"}, 1, 0, "");
+	,
+		Try(sl_picked = Pick File(GetText("btn_add_addin")));
+	);
+	If(!Is Missing(sl_picked) & Is String(sl_picked) & sl_picked != "",
+		sl_addin = sl_picked;
+		RefreshInputs_expr;
+	);
+);
+
+// Reads the paste tab's text into sl_pasted (called before any analysis)
+SyncPasted_expr = Expr(
+	Try(sl_pasted = paste_teb << Get Text);
+	If(Is Missing(sl_pasted), sl_pasted = "");
+	UpdateStatus_expr;
+);
+
+RemoveSelected_expr = Expr(
+	sl_sel = {};
+	Try(sl_sel = files_lb << Get Selected Indices);
+	If(N Items(sl_sel) > 0,
+		sl_offset = If(sl_addin != "", 1, 0);
+		For(i = N Items(sl_sel), i >= 1, i--,
+			sl_idx = sl_sel[i];
+			If(sl_offset == 1 & sl_idx == 1,
+				sl_addin = "",
+				Remove From(sl_files, sl_idx - sl_offset, 1)
+			);
+		);
+		RefreshInputs_expr;
+	);
+);
+
+LoadDemo_expr = Expr(
+	sl_files = {
+		sl_home || "demo/Main.jsl",
+		sl_home || "demo/Utils.jsl",
+		sl_home || "demo/Report.jsl"
+	};
+	sl_addin = "";
+	sl_pasted = "";
+	Try(paste_teb << Set Text(""));
+	RefreshInputs_expr;
+	Try(entry_cb << Set Selected(2));  // Main.jsl
+);
+
+ClearAll_expr = Expr(
+	sl_files = {};
+	sl_addin = "";
+	sl_pasted = "";
+	Try(paste_teb << Set Text(""));
+	RefreshInputs_expr;
+);
+
+// ------------------------------------------------------------
+// Settings dialog (continuation inside OK button)
+// ------------------------------------------------------------
+SettingsDialog_expr = Expr(
+	New Window(GetText("settings_title"), <<Modal,
+		V List Box(
+			H List Box(Text Box(GetText("set_provider")),
+				set_provider_rb = Radio Box({"Anthropic (Claude)", "OpenAI-compatible"})),
+			H List Box(Text Box(GetText("set_endpoint")),
+				set_ep_teb = Text Edit Box(sl_settings["endpoint"], <<Set Width(420))),
+			H List Box(Text Box(GetText("set_model")),
+				set_model_teb = Text Edit Box(sl_settings["model"], <<Set Width(300))),
+			H List Box(Text Box(GetText("set_key")),
+				set_key_teb = Text Edit Box(sl_settings["apikey"], <<Set Width(420))),
+			Spacer Box(Size(1, 6)),
+			set_hint_tb = Text Box(GetText("set_hint")),
+			H List Box(
+				Button Box(GetText("ok"),
+					sl_settings["provider"] = If((set_provider_rb << Get) == 2,
+						"openai", "anthropic");
+					sl_settings["endpoint"] = set_ep_teb << Get Text;
+					sl_settings["model"] = set_model_teb << Get Text;
+					sl_settings["apikey"] = set_key_teb << Get Text;
+					SaveSettings_func();
+				),
+				Button Box(GetText("cancel"))
+			)
+		)
+	);
+	Try(set_provider_rb << Set(If(sl_settings["provider"] == "openai", 2, 1)));
+	StyleBox_func(set_hint_tb, 9, "", sl_muted);
+);
+
+// Language switch: saves the choice and rebuilds the dialog so that
+// every label (including tab titles) is regenerated.
+SwitchLanguage_expr = Expr(
+	sl_sel = "";
+	Try(sl_sel = lang_cb << Get Selected);
+	sl_new_lang = If(sl_sel == "Deutsch", "de", "en");
+	If(sl_new_lang != sl_settings["lang"],
+		sl_settings["lang"] = sl_new_lang;
+		SaveSettings_func();
+		Try(main_dlg << Close Window);
+		Eval(main_dlg_expr);
+	);
+);
+
+// ------------------------------------------------------------
+// Main dialog (regenerable for language switching)
+// ------------------------------------------------------------
+main_dlg_expr = Expr(
+	// Pre-evaluate tab titles BEFORE Tab Box creation (JSL timing issue)
+	tab_title_files = GetText("tab_files");
+	tab_title_paste = GetText("tab_paste");
+
+	// Window title carries product, add-in version and build date
+	sl_win_title = GetText("win_title") || "  v" || sl_version
+		|| "  ·  " || sl_build;
+
+	main_dlg = New Window(sl_win_title,
+		// Border Box provides the outer margin so nothing sits on the edge
+		Border Box(Left(18), Right(18), Top(14), Bottom(14),
+		V List Box(
+			// ---- header band -------------------------------------
+			head_vlb = V List Box(
+				H List Box(
+					V List Box(
+						title_tb = Text Box(GetText("app_title")),
+						subtitle_tb = Text Box(GetText("subtitle")),
+						Spacer Box(Size(1, 3)),
+						ver_tb = Text Box("v" || sl_version || "   ·   " || sl_build)
+					),
+					Spacer Box(Size(40, 1)),
+					V List Box(
+						lang_lbl_tb = Text Box(GetText("lang_lbl")),
+						lang_cb = Combo Box({"English", "Deutsch"},
+							SwitchLanguage_expr
+						)
+					)
+				),
+				Spacer Box(Size(1, 8)),
+				rule_box = Spacer Box(Size(640, 3))
+			),
+			Spacer Box(Size(1, 14)),
+			Outline Box(GetText("outline_load"),
+				V List Box(
+					hint_load_tb = Text Box(GetText("hint_load")),
+					Tab Box(
+						Tab Page Box(tab_title_files,
+							V List Box(
+								Text Box(GetText("select_files")),
+								H List Box(
+									files_lb = List Box({},
+										<<Set Width(430), <<Set N Lines(9)),
+									V List Box(
+										bb_add_files = Button Box(GetText("btn_add_files"),
+											AddFiles_expr),
+										bb_remove = Button Box(GetText("btn_remove"),
+											RemoveSelected_expr),
+										Spacer Box(Size(1, 12)),
+										bb_add_addin = Button Box(GetText("btn_add_addin"),
+											AddAddin_expr),
+										bb_demo = Button Box(GetText("btn_demo"),
+											LoadDemo_expr)
+									)
+								),
+								hint_files_tb = Text Box(GetText("hint_files"))
+							)
+						),
+						Tab Page Box(tab_title_paste,
+							V List Box(
+								Text Box(GetText("paste_prompt")),
+								paste_teb = Text Edit Box("",
+									<<Set Width(560), <<Set N Lines(12)),
+								hint_paste_tb = Text Box(GetText("hint_paste"))
+							)
+						)
+					),
+					// Clear All sits below the tabs: it clears files AND pasted code
+					H List Box(
+						bb_clear = Button Box(GetText("btn_clear"), ClearAll_expr),
+						hint_clear_tb = Text Box(GetText("hint_clear"))
+					)
+				)
+			),
+			Spacer Box(Size(1, 16)),
+			ob_analyze = Outline Box(GetText("outline_analyze"),
+				V List Box(
+					H List Box(
+						bb_analyze = Button Box(GetText("btn_analyze"), RunAnalysis_expr),
+						hint_analyze_tb = Text Box(GetText("hint_analyze"))
+					),
+					Spacer Box(Size(1, 6)),
+					// Rarely needed, so it lives in a collapsed sub-section
+					ob_entry = Outline Box(GetText("outline_entry"),
+						V List Box(
+							H List Box(
+								Text Box(GetText("entry_lbl")),
+								entry_cb = Combo Box({})
+							),
+							hint_entry_tb = Text Box(GetText("hint_entry")),
+							hint_entry2_tb = Text Box(GetText("hint_entry2"))
+						)
+					)
+				)
+			),
+			Spacer Box(Size(1, 16)),
+			ob_ai = Outline Box(GetText("ai_hdr"),
+				V List Box(
+					H List Box(
+						bb_ai_call = Button Box(GetText("btn_ai_call"),
+							AICallWithConsent_expr),
+						bb_ai_copy = Button Box(GetText("btn_ai_copy"), CopyPrompt_expr),
+						bb_ai_paste = Button Box(GetText("btn_ai_paste"),
+							PasteAnswer_expr),
+						bb_settings = Button Box(GetText("btn_settings"),
+							SettingsDialog_expr)
+					),
+					hint_ai_tb = Text Box(GetText("hint_ai"))
+				)
+			),
+			Spacer Box(Size(1, 14)),
+			foot_rule = Spacer Box(Size(640, 2)),
+			Spacer Box(Size(1, 6)),
+			status_tb = Text Box(GetText("status_empty"))
+		)
+		)
+	);
+
+	// ---- styling ------------------------------------------------
+	StyleBox_func(title_tb, 19, "Bold", sl_accent);
+	StyleBox_func(subtitle_tb, 10, "", sl_muted);
+	StyleBox_func(ver_tb, 9, "", sl_muted);
+	StyleBox_func(lang_lbl_tb, 9, "", sl_muted);
+	Try(lang_cb << Set Selected(If(sl_settings["lang"] == "de", 2, 1)));
+	StyleBox_func(status_tb, 10, "Bold", sl_muted);
+	BackColor_func(rule_box, sl_accent);
+	BackColor_func(foot_rule, RGB Color(0.85, 0.88, 0.93));
+
+	// Grey out the hint lines so they read as help, not content
+	sl_hints = {hint_load_tb, hint_files_tb, hint_paste_tb, hint_clear_tb,
+		hint_entry_tb, hint_entry2_tb, hint_analyze_tb, hint_ai_tb};
+	For(i = 1, i <= N Items(sl_hints), i++,
+		StyleBox_func(sl_hints[i], 9, "", sl_muted)
+	);
+
+	// Live status while typing in the paste tab (ignored if unsupported)
+	Try(paste_teb << Set Script(UpdateStatus_expr));
+
+	// The optional AI section and the advanced start-script section
+	// both start collapsed
+	Try(ob_ai << Close(1), Try(ob_ai << Close, Try(ob_ai << Set Open(0))));
+	Try(ob_entry << Close(1),
+		Try(ob_entry << Close, Try(ob_entry << Set Open(0)))
+	);
+
+	// Tooltips (set after creation so unsupported messages cannot break layout)
+	Try(bb_add_files << Set Tip(GetText("tip_add_files")));
+	Try(bb_remove << Set Tip(GetText("tip_remove")));
+	Try(bb_add_addin << Set Tip(GetText("tip_add_addin")));
+	Try(bb_demo << Set Tip(GetText("tip_demo")));
+	Try(bb_clear << Set Tip(GetText("tip_clear")));
+	Try(entry_cb << Set Tip(GetText("tip_entry")));
+	Try(bb_analyze << Set Tip(GetText("tip_analyze")));
+	Try(bb_settings << Set Tip(GetText("tip_settings")));
+	Try(bb_ai_call << Set Tip(GetText("tip_ai_call")));
+	Try(bb_ai_copy << Set Tip(GetText("tip_ai_copy")));
+	Try(bb_ai_paste << Set Tip(GetText("tip_ai_paste")));
+	Try(files_lb << Set Tip(GetText("hint_files")));
+
+	RefreshInputs_expr;
+);
+
+Eval(main_dlg_expr);

@@ -1,0 +1,39 @@
+// Quality Snapshot — ScriptLens demo application
+// Entry point: builds demo data, validates it, computes statistics,
+// shows a report window and exports the results to a text file.
+
+Names Default To Here(1);
+
+// Load the other modules of this mini application
+Include("Utils.jsl");
+Include("Report.jsl");
+
+// Configuration
+report_title = "Quality Snapshot";
+export_path = "$DOCUMENTS/quality_snapshot.txt";
+sample_size = 120;
+
+// Orchestrates the complete snapshot workflow
+RunSnapshot = Function({},
+	{dt, stats},
+
+	Show("Quality Snapshot started");
+
+	// Step 1: build demo data
+	dt = BuildDemoTable(sample_size);
+
+	// Step 2: validate before analysing
+	If(CheckColumns(dt),
+		stats = ComputeStats(dt),
+		Throw("Input table is missing required columns")
+	);
+
+	// Step 3: present and export
+	ShowReport(stats);
+	ExportReport(stats, export_path);
+
+	Show("Quality Snapshot finished");
+);
+
+// Run the application
+RunSnapshot();

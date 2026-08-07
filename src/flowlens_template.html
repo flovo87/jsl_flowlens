@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSL FlowLens</title>
+<style>
+  :root{
+    --bg:#f4f6fa; --panel:#ffffff; --ink:#1e2733; --muted:#66738a;
+    --accent:#2f6fde; --accent-soft:#e3edfd; --lane:#eef1f7; --lane-head:#dde4f0;
+    --node:#ffffff; --node-border:#c3cde0; --node-active:#2f6fde;
+    --edge:#c7d0e2; --edge-lit:#2f6fde; --edge-cond:#d98324;
+    --ok:#2e9960; --warn:#d98324; --err:#c94040;
+    --radius:10px; --shadow:0 1px 4px rgba(30,39,51,.10);
+    font-size:15px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:"Segoe UI",system-ui,-apple-system,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:10px 18px;
+         background:var(--panel);box-shadow:var(--shadow);position:sticky;top:0;z-index:5}
+  .brand{font-weight:700;font-size:1.15rem;letter-spacing:.3px}
+  .brand span{color:var(--accent)}
+  .tagline{color:var(--muted);font-size:.85rem}
+  .honesty{margin-left:auto;font-size:.75rem;color:var(--warn);
+           border:1px solid var(--warn);border-radius:20px;padding:2px 10px}
+  .langsw button{border:1px solid var(--node-border);background:var(--panel);
+                 padding:3px 10px;cursor:pointer;font-weight:600;color:var(--muted)}
+  .langsw button:first-child{border-radius:6px 0 0 6px}
+  .langsw button:last-child{border-radius:0 6px 6px 0}
+  .langsw button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* one shape for every control: same radius, same height, even gaps */
+  .controls{display:flex;align-items:center;gap:10px;padding:10px 18px;flex-wrap:wrap}
+  .controls button,.viewsw button,.toolbtn{
+      border:1px solid var(--node-border);background:var(--panel);
+      border-radius:8px;height:34px;padding:0 14px;font-size:.9rem;
+      font-weight:600;color:var(--muted);cursor:pointer;
+      display:inline-flex;align-items:center;justify-content:center}
+  .controls button:hover,.viewsw button:hover,.toolbtn:hover{
+      background:var(--accent-soft);color:var(--ink)}
+  .transport{display:flex;gap:6px}
+  .transport button{width:42px;padding:0;font-size:.95rem}
+  .controls button.play{background:var(--accent);color:#fff;border-color:var(--accent);
+                        width:64px;font-size:1rem}
+  .controls button.play:hover{background:#2a63c6;color:#fff}
+  .viewsw{display:flex;gap:6px}
+  .viewsw button{min-width:96px}
+  .viewsw button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .stepinfo{font-variant-numeric:tabular-nums;color:var(--muted)}
+  .progress{flex:1;min-width:120px;height:6px;background:var(--lane);border-radius:3px;cursor:pointer}
+  .progress div{height:100%;width:0;background:var(--accent);border-radius:3px}
+  select{border:1px solid var(--node-border);border-radius:8px;padding:5px 8px;background:var(--panel)}
+  .logsw{display:flex;align-items:center;gap:5px;font-size:.82rem;color:var(--muted)}
+
+  .optbar{display:none;align-items:center;gap:14px;flex-wrap:wrap;
+          padding:8px 18px 10px;margin:0 18px 10px;background:var(--panel);
+          border:1px solid var(--lane);border-radius:10px}
+  .optbar.open{display:flex}
+  main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;padding:0 18px 18px}
+  main.solo{grid-template-columns:minmax(0,1fr)}
+  main.solo #expl{display:none}
+  @media(max-width:1000px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow)}
+  #diagramWrap{position:relative;overflow:auto;padding:10px;max-height:68vh;scroll-behavior:smooth}
+  #banner{display:flex;align-items:center;gap:8px;min-height:40px;padding:8px 14px;
+          border-bottom:1px solid var(--lane);font-size:.88rem;line-height:1.35;
+          background:var(--accent-soft);border-radius:var(--radius) var(--radius) 0 0}
+
+  /* Flowchart view */
+  #chart{display:none;gap:14px;padding:14px;max-height:68vh;overflow:hidden}
+  #chartFlow{flex:1;overflow:auto;scroll-behavior:smooth;position:relative;padding-left:10px}
+  #chartFlow::before{content:"";position:absolute;left:14px;top:0;bottom:0;
+                     width:2px;background:var(--lane)}
+  #chartFlow::before{display:none}
+  .ch-node rect,.ch-node polygon{fill:var(--panel);stroke:var(--node-border);stroke-width:1.4}
+  .ch-node.branch polygon{stroke:var(--warn)}
+  .ch-node.loop rect{stroke:var(--ok)}
+  .ch-node.startn rect{stroke:var(--accent);stroke-width:1.8}
+  .ch-node.wf rect{stroke:var(--accent);stroke-dasharray:none;fill:#f0f5fe}
+  .ch-node.wf text{font-weight:600}
+  /* Python steps get a green tint so language changes are visible */
+  .ch-node.pylang rect,.ch-node.pylang polygon{stroke:#4f9440;fill:#f6fbf5}
+  .ch-node.pylang.cur rect,.ch-node.pylang.cur polygon{fill:#e6f4e2;stroke:#3d7a30}
+  .ch-node text{font-size:11.5px;fill:var(--ink)}
+  .ch-node .ch-numsvg{font-size:9px;fill:var(--muted)}
+  .ch-node .ch-sub{font-size:9px;fill:#94a1b6;font-family:Consolas,Monaco,monospace}
+  .ch-node.done rect,.ch-node.done polygon{fill:#f6f8fc}
+  .ch-node.future{opacity:.45}
+  .ch-node.cur rect,.ch-node.cur polygon{stroke:var(--accent);stroke-width:2.6;
+      fill:var(--accent-soft);filter:drop-shadow(0 0 6px rgba(47,111,222,.5))}
+  .ch-conn{stroke:#8896ad;stroke-width:1.5;fill:none}
+  .ch-loopback{stroke:var(--ok);stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+  .ch-codelink{font-size:10px;fill:var(--accent);cursor:pointer;font-weight:700}
+  #chartPal{width:280px;flex:none;overflow:auto;scroll-behavior:smooth;
+            border-left:1px solid var(--lane);padding-left:14px}
+  .pal-hdr{font-weight:700;font-size:.82rem;margin:10px 0 4px;color:var(--ink)}
+  .pal-sec{display:flex;align-items:center;gap:6px;cursor:pointer;
+           font-weight:700;font-size:.8rem;color:var(--ink);padding:6px 4px;
+           border-top:1px solid var(--lane);user-select:none}
+  .pal-sec .tw{display:inline-block;transition:transform .15s;color:var(--muted)}
+  .pal-sec.open .tw{transform:rotate(90deg)}
+  .pal-body{display:none;padding-bottom:4px}
+  .pal-body.open{display:block}
+  .pal-item{border:1px solid var(--node-border);border-radius:8px;padding:5px 9px;
+            margin:0 0 5px 0;font-size:.8rem;cursor:pointer;background:var(--panel)}
+  .pal-item .pk{color:var(--muted);font-size:.7rem}
+  .pal-item .psteps{margin-top:2px}
+  .pal-item .pstep{display:inline-block;background:var(--lane);color:var(--muted);
+                   border-radius:8px;padding:0 6px;font-size:.68rem;margin:1px 2px 0 0;
+                   cursor:pointer}
+  .pal-item .pstep:hover{background:var(--accent);color:#fff}
+  .pal-item.cur{border-color:var(--accent);background:var(--accent-soft);
+                box-shadow:0 0 0 2px rgba(47,111,222,.25)}
+  .pal-set{border:1px solid var(--warn);border-radius:10px;padding:8px 10px;
+           margin-bottom:8px;font-size:.8rem;background:#fdf6ec}
+  .pal-set .pv{margin:2px 0}
+  .pal-set code{font-weight:600}
+
+  .lane-bg{fill:var(--lane)}
+  .lane-head{fill:var(--lane-head)}
+  .lane-title{font-weight:700;font-size:13px;fill:var(--ink)}
+  .lang-badge{fill:#d8e0ee}
+  .lang-badge.lang-python{fill:#dcedd9}
+  .lang-badge.lang-notebook{fill:#e6ddf2}
+  .lang-badge-t{font-size:9.5px;font-weight:700;fill:#54627a}
+  .pill{font-size:.66rem;font-weight:700;border-radius:8px;padding:1px 6px;
+        margin-left:5px;background:#e2e8f2;color:#54627a;letter-spacing:.3px}
+  .pill.python{background:#dcedd9;color:#2f6b2a}
+  .pill.notebook{background:#e6ddf2;color:#553f86}
+  .node rect{fill:var(--node);stroke:var(--node-border);stroke-width:1.2;rx:8}
+  .node text{font-size:12px;fill:var(--ink)}
+  .node .sub{font-size:9.5px;fill:var(--muted)}
+  .node.visited rect{stroke:var(--accent);stroke-width:1.4}
+  .node.current rect{stroke:var(--node-active);stroke-width:2.6;
+                     filter:drop-shadow(0 0 6px rgba(47,111,222,.6))}
+  .edge{stroke:var(--edge);stroke-width:1.3;fill:none}
+  .edge.cond{stroke-dasharray:5 4}
+  .edge.lit{stroke:var(--edge-lit);stroke-width:2.2}
+  .edge.lit.cond{stroke:var(--edge-cond)}
+  .edge.cur{stroke:var(--edge-lit);stroke-width:3;stroke-dasharray:8 6;
+            animation:flow .8s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-14}}
+
+  /* Storyboard: review table */
+  #story{display:none;padding:12px 14px;max-height:74vh;overflow:auto;
+         scroll-behavior:smooth}
+  .sb-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;
+              flex-wrap:wrap}
+  .revcount{font-size:.8rem;color:var(--muted);margin-left:auto;
+            font-variant-numeric:tabular-nums}
+  .sb-table{width:100%;border-collapse:collapse;font-size:.84rem}
+  .sb-table th{text-align:left;font-size:.72rem;text-transform:uppercase;
+               letter-spacing:.4px;color:var(--muted);font-weight:700;
+               padding:6px 8px;border-bottom:1px solid var(--node-border)}
+  .sb-table td{padding:7px 8px;border-bottom:1px solid var(--lane);
+               vertical-align:top}
+  .sb-row{cursor:pointer}
+  .sb-row:hover td{background:#f7f9fd}
+  .sb-row.done td{background:#fbfdfa}
+  .sb-row.future{opacity:.5}
+  .sb-row.cur td{background:var(--accent-soft);box-shadow:inset 0 0 0 1px rgba(47,111,222,.3)}
+  .c-num{width:38px;color:var(--muted);font-variant-numeric:tabular-nums;
+         font-size:.78rem}
+  .c-what .ic{margin-right:5px}
+  .c-what{line-height:1.4}
+  .c-belong{width:190px}
+  .c-belong .own{font-weight:600;font-size:.8rem}
+  .c-belong .loc{font-family:Consolas,Monaco,monospace;font-size:.68rem;
+                 color:var(--muted);margin-top:2px}
+  .ph{display:inline-block;font-size:.66rem;font-weight:700;border-radius:8px;
+      padding:1px 7px;margin-top:3px;background:var(--lane);color:var(--muted)}
+  .ph-setup{background:#e7edf9;color:#3b5a94}
+  .ph-data{background:#e8f6ee;color:#2c7350}
+  .ph-analysis{background:#f1e9fa;color:#5b3f8c}
+  .ph-output{background:#fdf1e0;color:#8a5211}
+  .ph-flow{background:#eef1f7;color:#5c6a80}
+  .c-code{width:290px}
+  .snip{margin:0;font-family:Consolas,Monaco,monospace;font-size:.72rem;
+        line-height:1.35;white-space:pre;overflow:hidden;max-height:56px;
+        background:#f7f9fc;border:1px solid var(--lane);border-radius:6px;
+        padding:4px 6px;cursor:pointer;color:#31435c}
+  .snip:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .c-done{width:34px;text-align:center}
+  .sb-group td{background:#eef2f9;font-size:.82rem;padding:8px;cursor:pointer;
+               border-bottom:1px solid var(--node-border)}
+  .sb-group .gcount{float:right;background:var(--panel);border-radius:9px;
+                    padding:0 8px;font-size:.7rem;color:var(--muted)}
+
+  /* Coverage (lens) view */
+  #lens{display:none;padding:12px 14px;max-height:74vh;overflow:auto}
+  .lens-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+            margin-bottom:8px;font-size:.84rem}
+  .lens-bar select{max-width:280px}
+  .lens-nums b{color:var(--ink)} .lens-nums .k{color:var(--muted)}
+  .lens-nums .gapnum{color:var(--warn);font-weight:700}
+  .lens-prog{position:relative;flex:1;min-width:140px;height:8px;
+             background:var(--lane);border-radius:4px;overflow:hidden}
+  .lens-prog div{position:absolute;left:0;top:0;height:100%;background:#3fa06a;
+                 border-radius:4px;z-index:2}
+  .lens-prog .mod{background:#bcd2f4;z-index:1}
+  .lens-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.74rem;
+               color:var(--muted);margin-bottom:8px;align-items:center}
+  .lens-legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;
+                   margin-right:5px;vertical-align:-1px;border:1px solid #d5dce8}
+  .sw.reached{background:#d7f0df}.sw.modelled{background:#e3edfd}
+  .sw.explained{background:#eceef3}
+  .sw.gap{background:#fdeccd}.sw.noncode{background:#f4f6fa}
+  .lens-code{font-family:Consolas,Monaco,monospace;font-size:.78rem;
+             line-height:1.5;border:1px solid var(--lane);border-radius:8px;
+             overflow:auto;max-height:56vh}
+  .lc{display:flex;white-space:pre;cursor:default}
+  .lc .ln{flex:none;width:52px;text-align:right;padding-right:10px;
+          color:#9aa7bd;user-select:none;border-right:1px solid #e6ebf3;
+          margin-right:9px}
+  .lc .lt{padding-right:14px}
+  .lc.reached{background:#d7f0df}
+  .lc.reached .ln{color:#3d7a54}
+  .lc.modelled{background:#eaf2fe}
+  .lc.explained{background:#eceef3;color:#5a6478}
+  .lc.gap{background:#fdeccd}
+  .lc.gap .ln{color:var(--warn);font-weight:700}
+  .lc.noncode{color:#8e9bb0}
+  .lc.reached,.lc.modelled,.lc.gap{cursor:pointer}
+  .lc.curline{box-shadow:inset 3px 0 0 var(--accent);font-weight:600}
+
+  #tray{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--lane)}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:.78rem;
+        background:var(--accent-soft);border-radius:14px;padding:2px 10px;
+        animation:pop .25s ease;max-width:260px;overflow:hidden;white-space:nowrap;
+        text-overflow:ellipsis}
+  .chip.err{background:#fbe4e4}.chip.file{background:#e8f6ee}.chip.window{background:#fdf1e0}
+  @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+
+  #expl{padding:14px 16px;max-height:74vh;overflow:auto}
+  #expl h2{font-size:1rem;margin:0 0 6px}
+  #overview{font-size:.88rem;line-height:1.55;border-bottom:1px solid var(--lane);
+            padding-bottom:10px;margin-bottom:10px}
+  #overview .k{color:var(--muted)}
+  #overview ol{margin:4px 0 4px 20px;padding:0}
+  #stepList{list-style:none;margin:0;padding:0}
+  #stepList li{padding:6px 9px;border-radius:8px;font-size:.85rem;line-height:1.4;
+               cursor:pointer;color:var(--muted)}
+  #stepList li:hover{background:var(--lane)}
+  #stepList li.done{color:var(--ink)}
+  #stepList li.cur{background:var(--accent-soft);color:var(--ink);font-weight:600}
+  #stepList li .tag{font-size:.7rem;border-radius:9px;padding:0 7px;margin-left:6px;
+                    background:var(--lane);color:var(--muted)}
+  #stepList li .tag.cond{background:#fdf1e0;color:var(--warn)}
+  #stepList li .tag.loop{background:#e8f6ee;color:var(--ok)}
+  footer{padding:6px 18px 14px;color:var(--muted);font-size:.75rem}
+
+  /* ---- print / PDF ---- */
+  #printReport{display:none}
+  @media print{
+    @page{size:A4 portrait;margin:14mm}
+    body{background:#fff}
+    header,.controls,main,footer,#codeModal{display:none !important}
+    #printReport{display:block;font-size:9.5pt;color:#000}
+    #printReport h1{font-size:17pt;margin:0 0 2mm}
+    #printReport h2{font-size:12pt;margin:6mm 0 2mm;
+                    border-bottom:1px solid #ccc;padding-bottom:1mm}
+    .p-meta{font-size:8.5pt;color:#555;margin-bottom:4mm}
+    .p-block{font-size:9pt;margin-bottom:4mm}
+    .p-files{margin:0 0 3mm 5mm;padding:0;font-size:9pt}
+    .p-table{width:100%;border-collapse:collapse;font-size:8.5pt}
+    .p-table th{text-align:left;border-bottom:1px solid #999;padding:1.5mm 1mm;
+                font-size:8pt;text-transform:uppercase}
+    .p-table td{border-bottom:1px solid #e0e0e0;padding:1.5mm 1mm;
+                vertical-align:top}
+    .p-table tr{page-break-inside:avoid}
+    .p-table td:first-child{width:8mm;color:#666}
+    .p-table td:nth-child(3){width:38mm}
+    .p-table td:nth-child(4){width:62mm}
+    .p-table td:last-child{width:7mm;text-align:center}
+    .p-table pre{margin:0;font-family:Consolas,monospace;font-size:7.5pt;
+                 white-space:pre-wrap;word-break:break-word;color:#333}
+    .p-note{margin-top:5mm;font-size:8pt;color:#666;font-style:italic}
+    .k{color:#666}
+    .pill,.tag,.ph{border:1px solid #ccc;border-radius:6px;padding:0 3px;
+                   font-size:7.5pt;background:none !important;color:#333 !important}
+  }
+
+  /* code modal */
+  #codeModal{display:none;position:fixed;inset:0;background:rgba(30,39,51,.45);
+             z-index:20;align-items:center;justify-content:center;padding:30px}
+  .cm-box{background:var(--panel);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);
+          max-width:900px;width:100%;max-height:82vh;display:flex;flex-direction:column}
+  .cm-head{display:flex;align-items:flex-start;justify-content:space-between;
+           padding:10px 16px;border-bottom:1px solid var(--lane);font-size:.95rem}
+  .cm-titles{min-width:0}
+  #cmSub{font-size:.75rem;color:var(--muted);font-family:Consolas,Monaco,monospace;
+         margin-top:2px}
+  .cm-tools{display:flex;align-items:center;gap:8px;flex:none}
+  .cm-modes button{border:1px solid var(--node-border);background:var(--panel);
+                   padding:4px 10px;font-size:.78rem;cursor:pointer;color:var(--muted)}
+  .cm-modes button:first-child{border-radius:6px 0 0 6px}
+  .cm-modes button:last-child{border-radius:0 6px 6px 0;border-left:none}
+  .cm-modes button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  #cmBtnDef{border:1px solid var(--node-border);background:var(--panel);border-radius:6px;
+            padding:4px 10px;font-size:.78rem;cursor:pointer;color:var(--accent)}
+  .cm-close{border:none;background:none;font-size:1.1rem;cursor:pointer;color:var(--muted)}
+  #cmBody{margin:0;padding:10px 0;overflow:auto;font-family:Consolas,Monaco,monospace;
+          font-size:.82rem;line-height:1.5;color:var(--ink)}
+  .cl{display:flex;white-space:pre}
+  .cl .ln{flex:none;width:58px;text-align:right;padding-right:12px;color:#9aa7bd;
+          user-select:none;border-right:1px solid var(--lane);margin-right:10px}
+  .cl .lt{white-space:pre;padding-right:16px}
+  .cl.hl{background:#fff6df}
+  .cl.hl .ln{color:var(--warn);font-weight:700}
+  .cm-note{padding:6px 16px;font-size:.75rem;color:var(--warn);font-family:inherit}
+  .codelink{color:var(--accent);cursor:pointer;font-weight:600}
+  .codelink:hover{text-decoration:underline}
+  .lineref{font-family:Consolas,Monaco,monospace;font-size:.7rem;color:var(--muted);
+           background:var(--lane);border-radius:6px;padding:0 5px;margin-left:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">JSL <span>FlowLens</span></div>
+  <div class="tagline" data-i18n="tagline"></div>
+  <div class="honesty" data-i18n="honesty"></div>
+  <div class="langsw">
+    <button id="langEn" onclick="setLang('en')">EN</button><button id="langDe" onclick="setLang('de')">DE</button>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="viewsw">
+    <button id="viewFlow" onclick="setView('flow')" data-i18n="viewFlow"></button>
+    <button id="viewChart" onclick="setView('chart')" data-i18n="viewChart"></button>
+    <button id="viewStory" onclick="setView('story')" data-i18n="viewStory"></button>
+    <button id="viewLens" onclick="setView('lens')" data-i18n="viewLens"></button>
+  </div>
+  <div class="transport">
+    <button id="btnFirst">⏮</button>
+    <button id="btnPrev">◀</button>
+    <button id="btnPlay" class="play">▶</button>
+    <button id="btnNext">▶▶</button>
+    <button id="btnLast">⏭</button>
+  </div>
+  <span class="stepinfo" id="stepInfo"></span>
+  <div class="progress" id="progress"><div id="progressBar"></div></div>
+  <button class="toolbtn" id="btnOpts" onclick="toggleOpts()"></button>
+  <button class="toolbtn" id="btnExpl" onclick="toggleExpl()"></button>
+</div>
+<div class="optbar" id="optbar">
+  <label><span data-i18n="speed"></span>
+    <select id="speed"><option value="1600">0.5×</option>
+      <option value="800" selected>1×</option><option value="400">2×</option></select>
+  </label>
+  <label class="logsw"><input type="checkbox" id="logToggle">
+    <span data-i18n="showLogs"></span></label>
+  <label class="logsw"><input type="checkbox" id="helperToggle">
+    <span data-i18n="showHelpers"></span></label>
+  <label class="logsw"><input type="checkbox" id="stmtToggle">
+    <span data-i18n="showStmts"></span></label>
+  <button class="toolbtn" id="btnPrint" onclick="printReport()"></button>
+</div>
+
+<main>
+  <div class="card">
+    <div id="banner"></div>
+    <div id="diagramWrap">
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="chart">
+      <div id="chartFlow"></div>
+      <div id="chartPal"></div>
+    </div>
+    <div id="story"></div>
+    <div id="lens"></div>
+    <div id="tray"></div>
+  </div>
+  <div class="card" id="expl">
+    <h2 data-i18n="explTitle"></h2>
+    <div id="overview"></div>
+    <ol id="stepList"></ol>
+  </div>
+</main>
+<div id="printReport"></div>
+<div id="codeModal">
+  <div class="cm-box">
+    <div class="cm-head">
+      <div class="cm-titles"><b id="cmTitle"></b><div id="cmSub"></div></div>
+      <div class="cm-tools">
+        <span class="cm-modes">
+          <button id="cmBtnExtract" onclick="setCodeMode('extract')"></button><button id="cmBtnFull" onclick="setCodeMode('full')"></button>
+        </span>
+        <button id="cmBtnDef" onclick="openCodeDef()"></button>
+        <button class="cm-close" onclick="closeCode()">✕</button>
+      </div>
+    </div>
+    <div id="cmBody"></div>
+  </div>
+</div>
+<footer id="foot"></footer>
+
+<script>
+const MODEL = __MODEL_JSON__;
+
+/* ------------------------------------------------ i18n ---- */
+const I18N = {
+ en:{tagline:"How this script works — explained and animated",
+     honesty:"Inferred flow — not a runtime trace",
+     explTitle:"Explanation", speed:"Speed", showLogs:"Show log messages",
+     viewFlow:"Flow", viewStory:"Storyboard",
+     clickCode:"click to view source", noSrc:"(top-level script code)",
+     codeLink:"view code", viewChart:"Flowchart",
+     settingsHdr:"⚙ Adjustable settings", settingsHint:"Values a user can change in the script:",
+     calledAt:"called at step", neverCalled:"not called in inferred flow",
+     showHelpers:"Show helper calls", helpersHdr:"Helpers",
+     showStmts:"Show plain statements",
+     cmExtract:"Extract", cmFull:"Full script", cmLine:"line", cmLines:"lines",
+     cmDefinition:"Definition", cmTruncated:"This file was truncated for embedding.",
+     viewLens:"Coverage", printBtn:"Print / Save as PDF",
+     optsBtn:"Options", explBtn:"Explanation",
+     modeComponent:"By component", modeFlow:"Full flow",
+     colStep:"#", colWhat:"What it does", colBelongs:"Belongs to",
+     colCode:"Code", colDone:"✓",
+     phase:{setup:"Setup",data:"Data preparation",analysis:"Analysis",
+            output:"Output",flow:"Control flow"},
+     topLevelGroup:"Top level (script body)",
+     reviewed:"reviewed", reviewedOf:"signed off",
+     clearReview:"Clear ticks", markAll:"Tick all up to here",
+     covTitle:"Line coverage", covReached:"reached", covModelled:"represented",
+     covNotModelled:"not represented", covOf:"of", covLines:"code lines",
+     covLegendReached:"reached in the walk-through",
+     covLegendModelled:"represented, not yet reached (or hidden by a filter)",
+     covLegendExplained:"explained elsewhere (definition, setting, housekeeping)",
+     covLegendGap:"not represented by any step",
+     covLegendNonCode:"comment / blank / not code",
+     covHint:"Amber lines are executable code that nothing in the model explains - read those yourself. Click any covered line to jump to its step.",
+     covPerfect:"Every executable line is represented by at least one step.",
+     reportTitle:"Code review report", reportGenerated:"Generated",
+     reportSteps:"Steps", reportFiles:"Files analysed",
+     printNote:"Diagrams are interactive and are not printed; this report contains the step table and the coverage summary.",
+     kindName:{table:"Data table",column:"Column",window:"Window",file:"File I/O",
+               report:"Report",tableop:"Table operation",log:"Log message",error:"Error",
+               plot:"Plot",model:"Model",pkg:"Packages",jsl:"JSL from Python"},
+     topLevel:"top level", conditional:"conditional", inLoop:"in loop",
+     phases:"Main workflow:",
+     ovIntro:(m,nf,nfn)=>`This ${m.meta.addin&&m.meta.addin.name?`add-in <b>“${m.meta.addin.name}”</b>`:"script set"} consists of <b>${nf}</b> file(s) with <b>${nfn}</b> function(s)/expression(s). Execution starts in <b>${m.entry}</b>.`,
+     ovFiles:"Files", ovConfig:"Configuration variables", ovNone:"none",
+     s_start:s=>`Execution begins at the ${t("topLevel")} of <b>${s.file}</b>.`,
+     s_include:s=>`<b>${s.file}</b> includes <b>${s.detail}</b> — its functions become available.`,
+     s_call:s=>{const d=fnDoc(s.target);return `<b>${ownerName(s.owner)}</b> calls <b>${ownerName(s.target)}</b>${s.count>1?` (${s.count}×)`:""}${d?` — ${d}`:""}`},
+     s_branch:s=>`Decision in <b>${ownerName(s.owner)}</b>: <code>If(${esc(trim40(s.detail))}…)</code>`,
+     s_loop:s=>`A <b>${s.detail}</b> loop in <b>${ownerName(s.owner)}</b> repeats the indented step(s)${s.src?`: <code>${esc(trim40(s.src))}…</code>`:"."}`,
+     s_note:s=>`Note: ${s.detail}.`,
+     s_wfstep:s=>`<b>Step:</b> ${esc(s.detail)}`,
+     s_import:s=>`Imports <b>${esc(s.detail)}</b>.`,
+     s_pyblock:s=>`Hands over to an embedded <b>Python</b> block.`,
+     s_jslblock:s=>`Runs an embedded <b>JSL</b> block from Python.`,
+     s_pysend:s=>`Sends <code>${esc(s.detail)}</code> from JSL to Python.`,
+     s_pyget:s=>`Reads <code>${esc(s.detail)}</code> back from Python into JSL.`,
+     s_cell:s=>`<b>${LANG_LABEL[s.lang]||""} cell</b>${s.detail?`: ${esc(s.detail)}`:""}${s.hidden?" (hidden)":""}`,
+     s_section:s=>`<b>Section:</b> ${esc(s.detail)}`,
+     s_text:s=>`Text: <i>${esc(s.detail)}</i>`,
+     s_stmt:s=>`Runs <code>${esc(s.detail)}</code>`,
+     fx:{table:s=>`A data table <b>“${s.detail}”</b> is created`,
+         column:s=>`Column <b>“${s.detail}”</b> is added`,
+         window:s=>`A window <b>${s.detail?`“${s.detail}”`:""}</b> is opened`,
+         file:s=>s.detail?`The file <b>“${esc(s.detail)}”</b> is opened or written`:`A file is written or read`,
+         report:s=>`A <b>${esc(s.detail)}</b> report is created`,
+         tableop:s=>`Table operation: <b>${esc(s.detail)}</b>`,
+         log:s=>`Log message: <i>“${s.detail}”</i>`,
+         error:s=>`Possible stop with error: <i>“${s.detail}”</i>`,
+         plot:s=>`A plot is produced (<b>${esc(s.detail)}</b>)`,
+         model:s=>`A model is fitted or applied: <b>${esc(s.detail)}</b>`,
+         pkg:s=>`Python packages are installed: <b>${esc(s.detail)}</b>`,
+         jsl:s=>`JSL code is executed from Python`},
+     inFn:s=>` — in <b>${ownerName(s.owner)}</b>`},
+ de:{tagline:"So funktioniert dieses Skript — erklärt und animiert",
+     honesty:"Abgeleiteter Ablauf — kein Laufzeit-Trace",
+     explTitle:"Erklärung", speed:"Tempo", showLogs:"Log-Meldungen anzeigen",
+     viewFlow:"Ablauf", viewStory:"Storyboard",
+     clickCode:"Klick zeigt Quellcode", noSrc:"(Skriptcode auf Hauptebene)",
+     codeLink:"Code anzeigen", viewChart:"Flussdiagramm",
+     settingsHdr:"⚙ Einstellbare Variablen", settingsHint:"Werte, die im Skript angepasst werden können:",
+     calledAt:"aufgerufen bei Schritt", neverCalled:"im abgeleiteten Ablauf nicht aufgerufen",
+     showHelpers:"Hilfsfunktionen anzeigen", helpersHdr:"Hilfsfunktionen",
+     showStmts:"Einfache Anweisungen anzeigen",
+     cmExtract:"Auszug", cmFull:"Ganzes Skript", cmLine:"Zeile", cmLines:"Zeilen",
+     cmDefinition:"Definition", cmTruncated:"Diese Datei wurde für die Einbettung gekürzt.",
+     viewLens:"Abdeckung", printBtn:"Drucken / als PDF sichern",
+     optsBtn:"Optionen", explBtn:"Erklärung",
+     modeComponent:"Nach Bausteinen", modeFlow:"Gesamter Ablauf",
+     colStep:"#", colWhat:"Was passiert", colBelongs:"Gehört zu",
+     colCode:"Code", colDone:"✓",
+     phase:{setup:"Vorbereitung",data:"Datenaufbereitung",analysis:"Analyse",
+            output:"Ausgabe",flow:"Ablaufsteuerung"},
+     topLevelGroup:"Hauptebene (Skriptkörper)",
+     reviewed:"geprüft", reviewedOf:"abgehakt",
+     clearReview:"Haken löschen", markAll:"Bis hierher abhaken",
+     covTitle:"Zeilenabdeckung", covReached:"erreicht", covModelled:"abgebildet",
+     covNotModelled:"nicht abgebildet", covOf:"von", covLines:"Codezeilen",
+     covLegendReached:"im Durchlauf erreicht",
+     covLegendModelled:"abgebildet, noch nicht erreicht (oder ausgeblendet)",
+     covLegendExplained:"an anderer Stelle erklärt (Definition, Einstellung, Verwaltung)",
+     covLegendGap:"von keinem Schritt abgebildet",
+     covLegendNonCode:"Kommentar / leer / kein Code",
+     covHint:"Bernsteinfarbene Zeilen sind ausführbarer Code, den das Modell nicht erklärt - diese bitte selbst lesen. Ein Klick auf eine abgedeckte Zeile springt zum zugehörigen Schritt.",
+     covPerfect:"Jede ausführbare Zeile ist durch mindestens einen Schritt abgebildet.",
+     reportTitle:"Code-Review-Bericht", reportGenerated:"Erstellt",
+     reportSteps:"Schritte", reportFiles:"Analysierte Dateien",
+     printNote:"Diagramme sind interaktiv und werden nicht gedruckt; dieser Bericht enthält die Schritttabelle und die Abdeckungsübersicht.",
+     kindName:{table:"Datentabelle",column:"Spalte",window:"Fenster",file:"Datei-Zugriff",
+               report:"Report",tableop:"Tabellen-Operation",log:"Log-Meldung",error:"Fehler",
+               plot:"Grafik",model:"Modell",pkg:"Pakete",jsl:"JSL aus Python"},
+     topLevel:"Hauptebene", conditional:"bedingt", inLoop:"in Schleife",
+     phases:"Haupt-Workflow:",
+     ovIntro:(m,nf,nfn)=>`${m.meta.addin&&m.meta.addin.name?`Dieses Add-In <b>„${m.meta.addin.name}“</b>`:"Dieses Skript-Set"} besteht aus <b>${nf}</b> Datei(en) mit <b>${nfn}</b> Funktion(en)/Ausdrücken. Die Ausführung beginnt in <b>${m.entry}</b>.`,
+     ovFiles:"Dateien", ovConfig:"Konfigurationsvariablen", ovNone:"keine",
+     s_start:s=>`Die Ausführung beginnt auf der ${t("topLevel")} von <b>${s.file}</b>.`,
+     s_include:s=>`<b>${s.file}</b> bindet <b>${s.detail}</b> ein — dessen Funktionen werden verfügbar.`,
+     s_call:s=>{const d=fnDoc(s.target);return `<b>${ownerName(s.owner)}</b> ruft <b>${ownerName(s.target)}</b> auf${s.count>1?` (${s.count}×)`:""}${d?` — ${d}`:""}`},
+     s_branch:s=>`Entscheidung in <b>${ownerName(s.owner)}</b>: <code>If(${esc(trim40(s.detail))}…)</code>`,
+     s_loop:s=>`Eine <b>${s.detail}</b>-Schleife in <b>${ownerName(s.owner)}</b> wiederholt die eingerückten Schritte${s.src?`: <code>${esc(trim40(s.src))}…</code>`:"."}`,
+     s_note:s=>`Hinweis: ${s.detail}.`,
+     s_wfstep:s=>`<b>Schritt:</b> ${esc(s.detail)}`,
+     s_import:s=>`Importiert <b>${esc(s.detail)}</b>.`,
+     s_pyblock:s=>`Übergibt an einen eingebetteten <b>Python</b>-Block.`,
+     s_jslblock:s=>`Führt aus Python heraus einen <b>JSL</b>-Block aus.`,
+     s_pysend:s=>`Übergibt <code>${esc(s.detail)}</code> von JSL an Python.`,
+     s_pyget:s=>`Liest <code>${esc(s.detail)}</code> aus Python zurück nach JSL.`,
+     s_cell:s=>`<b>${LANG_LABEL[s.lang]||""}-Zelle</b>${s.detail?`: ${esc(s.detail)}`:""}${s.hidden?" (ausgeblendet)":""}`,
+     s_section:s=>`<b>Abschnitt:</b> ${esc(s.detail)}`,
+     s_text:s=>`Text: <i>${esc(s.detail)}</i>`,
+     s_stmt:s=>`Runs <code>${esc(s.detail)}</code>`,
+     fx:{table:s=>`Die Datentabelle <b>„${s.detail}“</b> wird erstellt`,
+         column:s=>`Spalte <b>„${s.detail}“</b> wird hinzugefügt`,
+         window:s=>`Ein Fenster <b>${s.detail?`„${s.detail}“`:""}</b> wird geöffnet`,
+         file:s=>s.detail?`Die Datei <b>„${esc(s.detail)}“</b> wird geöffnet oder geschrieben`:`Eine Datei wird geschrieben oder gelesen`,
+         report:s=>`Ein <b>${esc(s.detail)}</b>-Report wird erstellt`,
+         tableop:s=>`Tabellen-Operation: <b>${esc(s.detail)}</b>`,
+         log:s=>`Log-Meldung: <i>„${s.detail}“</i>`,
+         error:s=>`Möglicher Abbruch mit Fehler: <i>„${s.detail}“</i>`,
+         plot:s=>`Eine Grafik wird erzeugt (<b>${esc(s.detail)}</b>)`,
+         model:s=>`Ein Modell wird angepasst oder angewendet: <b>${esc(s.detail)}</b>`,
+         pkg:s=>`Python-Pakete werden installiert: <b>${esc(s.detail)}</b>`,
+         jsl:s=>`Aus Python heraus wird JSL ausgeführt`},
+     inFn:s=>` — in <b>${ownerName(s.owner)}</b>`}
+};
+let lang=(navigator.language||"en").toLowerCase().startsWith("de")?"de":"en";
+let view="flow";
+function t(k){return I18N[lang][k]}
+function esc(x){const d=document.createElement("div");d.textContent=x||"";return d.innerHTML}
+function trim40(x){x=x||"";return x.length>40?x.slice(0,40):x}
+
+const FX_ICON={table:"📊",column:"🧱",window:"🪟",file:"💾",log:"💬",error:"⚠️",
+               report:"📈",tableop:"🔧",plot:"🖼️",model:"🧠",pkg:"📦",jsl:"📜"};
+const TYPE_ICON={start:"🏁",include:"📄",call:"➜",branch:"🔀",loop:"🔁",note:"ℹ️",
+                 wfstep:"🏷️",import:"📚",pyblock:"🐍",jslblock:"📜",stmt:"▪",
+                 pysend:"📤",pyget:"📥",cell:"🧩",section:"📑",text:"📝"};
+const LANG_LABEL={jsl:"JSL",python:"Python",notebook:"Notebook",text:"Text"};
+const LANG_SHORT={jsl:"JSL",python:"PY",notebook:"NB",text:""};
+function stepIcon(s){return s.type==="effect"?FX_ICON[s.kind]||"•":TYPE_ICON[s.type]||"•"}
+
+/* ------------------------------------------- model helpers ---- */
+const fnById={}; MODEL.functions.forEach(f=>fnById[f.id]=f);
+function ownerName(id){if(!id)return"";const n=id.split("::")[1]||id;
+  return n==="__top__"?t("topLevel")+" ("+id.split("::")[0]+")":n}
+function shortName(id){const n=(id||"").split("::")[1]||id;return n==="__top__"?"⌂ top":n}
+function fnDoc(id){const f=fnById[id];return f&&f.doc?esc(f.doc):""}
+
+/* --------------------------- visible steps (log filter) ---- */
+let showLogs=false, showHelpers=false, showStmts=false;
+let steps=[];
+function isHelper(id){const f=fnById[id];return !!(f&&f.helper)}
+function computeSteps(){
+  steps=MODEL.steps.filter(s=>{
+    if(!showLogs&&s.type==="effect"&&s.kind==="log")return false;
+    if(!showStmts&&s.type==="stmt")return false;
+    if(!showHelpers&&s.type==="call"&&isHelper(s.target))return false;
+    return true;
+  });
+}
+
+/* ------------------------------------------------ layout ---- */
+const NODE_W=195, NODE_H=44, NODE_GAP=14, COL_GAP=12, LANE_GAP=20,
+      HEAD_H=32, PAD=14, MAX_ROWS=9;
+const fileOrder=[MODEL.entry,...MODEL.files.map(f=>f.name).filter(n=>n!==MODEL.entry)];
+const tops=new Set(MODEL.steps.filter(s=>(s.owner||"").endsWith("::__top__")).map(s=>s.owner));
+tops.add(MODEL.entry+"::__top__");
+const nodes={}, lanes=[];
+let laneX=PAD, svgH=0;
+fileOrder.forEach((fn,li)=>{
+  const ids=[];
+  if(tops.has(fn+"::__top__")) ids.push(fn+"::__top__");
+  MODEL.functions.filter(f=>f.file===fn).sort((a,b)=>a.line-b.line)
+    .forEach(f=>ids.push(f.id));
+  const ncols=Math.max(1,Math.ceil(ids.length/MAX_ROWS));
+  const rows=Math.ceil(ids.length/ncols);
+  const laneW=ncols*(NODE_W+COL_GAP)+COL_GAP;
+  ids.forEach((id,k)=>{
+    const c=Math.floor(k/rows), r=k%rows;
+    nodes[id]={x:laneX+COL_GAP+c*(NODE_W+COL_GAP),
+               y:HEAD_H+PAD+12+r*(NODE_H+NODE_GAP), w:NODE_W, h:NODE_H, lane:li};
+  });
+  lanes.push({x:laneX,w:laneW,name:fn});
+  svgH=Math.max(svgH,HEAD_H+PAD+12+rows*(NODE_H+NODE_GAP)+PAD);
+  laneX+=laneW+LANE_GAP;
+});
+const svgW=laneX-LANE_GAP+PAD;
+
+const SVGNS="http://www.w3.org/2000/svg";
+const svg=document.getElementById("svg");
+function el(tag,attrs,parent){const e=document.createElementNS(SVGNS,tag);
+  for(const k in attrs)e.setAttribute(k,attrs[k]);(parent||svg).appendChild(e);return e}
+svg.setAttribute("width",svgW);svg.setAttribute("height",svgH);
+
+function fileLang(name){const f=MODEL.files.find(x=>x.name===name);return f&&f.lang||"jsl"}
+lanes.forEach(l=>{
+  el("rect",{x:l.x,y:PAD,width:l.w,height:svgH-2*PAD,rx:10,class:"lane-bg"});
+  el("rect",{x:l.x,y:PAD,width:l.w,height:HEAD_H,rx:10,class:"lane-head"});
+  const tt=el("text",{x:l.x+12,y:PAD+21,class:"lane-title"});tt.textContent=l.name;
+  const lg=fileLang(l.name);
+  if(LANG_SHORT[lg]){
+    const bw=LANG_SHORT[lg].length*7+12;
+    el("rect",{x:l.x+l.w-bw-10,y:PAD+8,width:bw,height:17,rx:8,
+      class:"lang-badge lang-"+lg});
+    const bt=el("text",{x:l.x+l.w-bw/2-10,y:PAD+20,class:"lang-badge-t"});
+    bt.setAttribute("text-anchor","middle");bt.textContent=LANG_SHORT[lg];
+  }
+});
+
+const edgeEls={};
+function edgePath(a,b){
+  const A=nodes[a],B=nodes[b];if(!A||!B)return null;
+  const aCx=A.x+A.w/2,bCx=B.x+B.w/2;
+  const sx=aCx<bCx?A.x+A.w:A.x, tx=aCx<bCx?B.x:B.x+B.w;
+  const y1=A.y+A.h/2,y2=B.y+B.h/2;
+  if(Math.abs(aCx-bCx)<5){const x=A.x+A.w,o=26;
+    return `M ${x} ${y1} C ${x+o} ${y1}, ${x+o} ${y2}, ${x} ${y2}`}
+  const mx=(sx+tx)/2;
+  return `M ${sx} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${tx} ${y2}`;
+}
+MODEL.edges.forEach(e=>{
+  const p=edgePath(e.from,e.to);if(!p)return;
+  edgeEls[e.from+"->"+e.to]=el("path",{d:p,class:"edge"+(e.conditional?" cond":"")});
+});
+
+const nodeEls={};
+function fitText(txt,max){return txt.length>max?txt.slice(0,max-1)+"…":txt}
+for(const id in nodes){
+  const n=nodes[id],g=el("g",{class:"node"});
+  el("rect",{x:n.x,y:n.y,width:n.w,height:n.h},g);
+  const name=el("text",{x:n.x+9,y:n.y+18},g);
+  name.textContent=fitText(shortName(id),26);
+  const f=fnById[id];
+  const sub=el("text",{x:n.x+9,y:n.y+33,class:"sub"},g);
+  sub.textContent=f?fitText(f.kind+(f.args&&f.args.length?"("+f.args.join(", ")+")":"()"),30):"";
+  const ttl=el("title",{},g);ttl.textContent=ownerName(id)+(f&&f.doc?" — "+f.doc:"")+" · "+t("clickCode");
+  if(f&&f.helper)g.setAttribute("opacity","0.5");
+  g.style.cursor="pointer";
+  g.addEventListener("click",()=>openCode(id));
+  nodeEls[id]=g;
+}
+
+/* ------------------------------------------------ code view ----
+   Every element is traceable: the viewer shows either the exact code
+   extract or the complete script file with those lines highlighted. */
+let cmState={mode:"extract",file:"",line:1,endline:1,hl:0,hlEnd:0,
+             extract:"",title:"",defId:null};
+
+function fileEntry(name){return MODEL.files.find(x=>x.name===name)}
+function lineCount(txt){return (txt||"").split("\n").length}
+
+function openCodeStep(s){
+  const start=s.srcline||s.line||1;
+  cmState={mode:"extract",file:s.file,line:start,
+           endline:start+lineCount(s.src)-1,hl:s.line||start,hlEnd:s.line||start,
+           extract:s.src||"",title:chartLabel(s),
+           defId:(s.type==="call"&&fnById[s.target])?s.target:null};
+  if(!s.src)cmState.mode="full";
+  renderCode();
+}
+function openCode(id){                 // function / expression definition
+  const f=fnById[id];
+  if(f){
+    cmState={mode:"extract",file:f.file,line:f.line,
+             endline:f.endline||f.line+lineCount(f.src)-1,
+             hl:f.line,hlEnd:f.endline||f.line,
+             extract:f.src||"",title:f.name+" ("+f.kind+")",defId:null};
+  }else{                               // top-level node: show whole file
+    const fname=id.split("::")[0];
+    cmState={mode:"full",file:fname,line:1,endline:1,hl:0,hlEnd:0,
+             extract:"",title:fname+" — "+t("noSrc"),defId:null};
+  }
+  renderCode();
+}
+function openCodeDef(){if(cmState.defId)openCode(cmState.defId)}
+function setCodeMode(m){cmState.mode=m;renderCode()}
+function closeCode(){document.getElementById("codeModal").style.display="none"}
+
+function renderCode(){
+  const st=cmState, fe=fileEntry(st.file), body=document.getElementById("cmBody");
+  document.getElementById("cmTitle").textContent=st.title;
+  document.getElementById("cmSub").textContent=
+    st.file+(st.hl?"  ·  "+t("cmLine")+" "+st.hl
+      +(st.endline>st.line?"  ("+t("cmLines")+" "+st.line+"–"+st.endline+")":""):"");
+  document.getElementById("cmBtnExtract").className=st.mode==="extract"?"on":"";
+  document.getElementById("cmBtnFull").className=st.mode==="full"?"on":"";
+  document.getElementById("cmBtnExtract").textContent=t("cmExtract");
+  document.getElementById("cmBtnFull").textContent=t("cmFull");
+  const defBtn=document.getElementById("cmBtnDef");
+  defBtn.style.display=st.defId?"inline-block":"none";
+  defBtn.textContent="→ "+t("cmDefinition");
+
+  let lines,first,note="";
+  if(st.mode==="extract"&&st.extract){
+    lines=st.extract.split("\n");first=st.line;
+  }else{
+    const srcTxt=fe&&fe.source?fe.source:"";
+    if(!srcTxt){lines=[t("noSrc")];first=1;}
+    else{lines=srcTxt.split("\n");first=1;
+      if(fe.truncated)note=t("cmTruncated");}
+  }
+  const rows=lines.map((ln,k)=>{
+    const no=first+k;
+    const on=st.hl&&no>=st.hl&&no<=Math.max(st.hl,st.hlEnd);
+    return `<div class="cl${on?" hl":""}" id="L${no}"><span class="ln">${no}</span><span class="lt">${esc(ln)||" "}</span></div>`;
+  }).join("");
+  body.innerHTML=(note?`<div class="cm-note">${note}</div>`:"")+rows;
+  document.getElementById("codeModal").style.display="flex";
+  if(st.hl){
+    const target=document.getElementById("L"+st.hl);
+    if(target&&target.scrollIntoView)
+      target.scrollIntoView({block:"center"});
+  }else body.scrollTop=0;
+}
+
+/* --------------------------------------------- explanation ---- */
+function sentence(s){
+  if(s.type==="effect"){
+    const fx=I18N[lang].fx[s.kind]||(x=>esc(x.detail));
+    return fx(s)+(s.count>1?` (${s.count}×)`:"")+I18N[lang].inFn(s)+".";
+  }
+  const fn=I18N[lang]["s_"+s.type];return fn?fn(s):esc(s.detail);
+}
+function renderOverview(){
+  const m=MODEL,ov=document.getElementById("overview");
+  const files=m.files.map(f=>`<b>${f.name}</b>`
+    +(f.lang&&LANG_SHORT[f.lang]?` <span class="pill ${f.lang}">${LANG_SHORT[f.lang]}</span>`:"")
+    +(f.header?` <span class="k">— ${esc(f.header)}</span>`:"")).join("<br>");
+  const vars=m.variables.length
+    ?m.variables.map(v=>`<div><code>${v.name}</code> = <b>${esc(String(v.value))}</b> <span class="k">(${esc(v.file)} : ${v.line})</span></div>`).join("")
+    :t("ovNone");
+  const phases=m.steps.filter(s=>s.type==="call"&&s.owner.endsWith("::__top__")&&!isHelper(s.target))
+    .map(s=>`<li><b>${ownerName(s.target)}</b>${fnDoc(s.target)?` <span class="k">— ${fnDoc(s.target)}</span>`:""}</li>`).join("");
+  ov.innerHTML=I18N[lang].ovIntro(m,m.files.length,m.functions.length)
+    +(phases?`<br><br><span class="k">${t("phases")}</span><ol>${phases}</ol>`:"")
+    +`<span class="k">${t("ovFiles")}:</span><br>${files}`
+    +`<br><br><b>${t("settingsHdr")}</b><br><span class="k">${t("settingsHint")}</span>${vars}`;
+}
+function renderStepList(){
+  const ol=document.getElementById("stepList");ol.innerHTML="";
+  steps.forEach((s,idx)=>{
+    const li=document.createElement("li");
+    li.innerHTML=stepIcon(s)+" "+sentence(s)
+      +(s.lang&&s.lang!=="jsl"&&LANG_SHORT[s.lang]?` <span class="pill ${s.lang}">${LANG_SHORT[s.lang]}</span>`:"")
+      +(s.conditional?` <span class="tag cond">${t("conditional")}</span>`:"")
+      +(s.loop?` <span class="tag loop">${t("inLoop")}</span>`:"")
+      +(s.line?` <span class="lineref">${esc(lineRef(s))}</span>`:"")
+      +(s.src?` <span class="codelink" data-si="${idx}">‹/›</span>`:"");
+    li.onclick=()=>goto(idx);
+    const cl=li.querySelector(".codelink");
+    if(cl)cl.onclick=e=>{e.stopPropagation();openCodeStep(s)};
+    li.id="step-"+idx;
+    ol.appendChild(li);
+  });
+}
+/* -------------------------------------------- flowchart ---- */
+let palEls={},palTarget=null;
+function chartLabel(s){
+  if(s.type==="wfstep")return trim40(s.detail);
+  if(s.type==="call")return shortName(s.target)+(s.count>1?" ×"+s.count:"");
+  if(s.type==="branch")return "If("+trim40(s.detail)+"…)";
+  if(s.type==="loop")return s.detail;
+  if(s.type==="include")return "Include "+s.detail;
+  if(s.type==="start")return s.detail;
+  if(s.type==="effect")
+    return trim40(s.detail||(t("kindName")||{})[s.kind]||s.kind);
+  return trim40(s.detail);
+}
+/* "file : line" when several files are involved, otherwise just the line */
+function lineRef(s){
+  if(!s.line)return "";
+  return (MODEL.files.length>1?fitText(s.file,20)+" : ":"")+s.line;
+}
+function renderChart(){
+  const flow=document.getElementById("chartFlow");flow.innerHTML="";
+  const NW=210,NH=48,VG=20,XI=54,X0=14,Y0=14;
+  const maxDepth=steps.reduce((m,s)=>Math.max(m,s.depth||0),0);
+  const W=X0+maxDepth*XI+NW+30, H=Y0+steps.length*(NH+VG)+10;
+  const s2=document.createElementNS(SVGNS,"svg");
+  s2.setAttribute("width",W);s2.setAttribute("height",H);
+  const defs=document.createElementNS(SVGNS,"defs");
+  defs.innerHTML='<marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5"'
+    +' markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+    +'<path d="M0,0 L10,5 L0,10 z" fill="#8896ad"/></marker>'
+    +'<marker id="arrl" viewBox="0 0 10 10" refX="8.5" refY="5"'
+    +' markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+    +'<path d="M0,0 L10,5 L0,10 z" fill="#2e9960"/></marker>';
+  s2.appendChild(defs);
+  const pos=steps.map((s,idx)=>({x:X0+(s.depth||0)*XI,y:Y0+idx*(NH+VG)}));
+  // orthogonal connectors with arrowheads (drawn first, under the nodes)
+  for(let i=0;i<steps.length-1;i++){
+    const a=pos[i],b=pos[i+1];
+    const cx1=a.x+NW/2,cx2=b.x+NW/2,y1=a.y+NH,y2=b.y,ym=y2-VG/2;
+    const p=document.createElementNS(SVGNS,"path");
+    p.setAttribute("d",Math.abs(cx1-cx2)<2
+      ?`M ${cx1} ${y1} L ${cx2} ${y2}`
+      :`M ${cx1} ${y1} L ${cx1} ${ym} L ${cx2} ${ym} L ${cx2} ${y2}`);
+    p.setAttribute("class","ch-conn");
+    p.setAttribute("marker-end","url(#arr)");
+    s2.appendChild(p);
+  }
+  // circular loop-back connectors: from last body step up to the loop node
+  steps.forEach((s,idx)=>{
+    if(s.type!=="loop")return;
+    let end=idx;
+    while(end+1<steps.length&&(steps[end+1].depth||0)>(s.depth||0))end++;
+    const p=document.createElementNS(SVGNS,"path");
+    p.setAttribute("class","ch-loopback");
+    p.setAttribute("marker-end","url(#arrl)");
+    if(end>idx){
+      const a=pos[end],b=pos[idx];
+      const xR=Math.max(a.x,b.x)+NW+18;
+      p.setAttribute("d",`M ${a.x+NW} ${a.y+NH/2} L ${xR} ${a.y+NH/2}`
+        +` L ${xR} ${b.y+NH/2} L ${b.x+NW+4} ${b.y+NH/2}`);
+    }else{
+      const b=pos[idx],x=b.x+NW,y=b.y+NH/2;   // empty loop: small self-circle
+      p.setAttribute("d",`M ${x} ${y-8} C ${x+26} ${y-16}, ${x+26} ${y+16}, ${x+2} ${y+9}`);
+    }
+    s2.appendChild(p);
+  });
+  // nodes with classic flowchart shapes
+  steps.forEach((s,idx)=>{
+    const g=document.createElementNS(SVGNS,"g");
+    const x=pos[idx].x,y=pos[idx].y;
+    const base="ch-node "+(s.type==="branch"?"branch":s.type==="loop"?"loop"
+      :s.type==="effect"?"effect":s.type==="start"?"startn"
+      :s.type==="wfstep"||s.type==="section"?"wf":"plain")
+      +(s.lang==="python"?" pylang":"");
+    g.setAttribute("id","ch-"+idx);
+    g.setAttribute("data-base",base);
+    g.setAttribute("class",base);
+    g.style.cursor="pointer";
+    let shape;
+    if(s.type==="branch"){                       // decision diamond
+      shape=document.createElementNS(SVGNS,"polygon");
+      shape.setAttribute("points",
+        `${x+NW/2},${y-4} ${x+NW+14},${y+NH/2} ${x+NW/2},${y+NH+4} ${x-14},${y+NH/2}`);
+    }else if(s.type==="effect"){                 // I/O parallelogram
+      shape=document.createElementNS(SVGNS,"polygon");
+      shape.setAttribute("points",
+        `${x+12},${y} ${x+NW},${y} ${x+NW-12},${y+NH} ${x},${y+NH}`);
+    }else{                                       // process / start
+      shape=document.createElementNS(SVGNS,"rect");
+      shape.setAttribute("x",x);shape.setAttribute("y",y);
+      shape.setAttribute("width",NW);shape.setAttribute("height",NH);
+      shape.setAttribute("rx",s.type==="start"||s.type==="include"?18:6);
+    }
+    g.appendChild(shape);
+    const t1=document.createElementNS(SVGNS,"text");
+    t1.setAttribute("x",x+NW/2);t1.setAttribute("y",y+NH/2-1);
+    t1.setAttribute("text-anchor","middle");
+    t1.textContent=stepIcon(s)+" "+fitText(chartLabel(s),s.type==="branch"?20:26);
+    g.appendChild(t1);
+    // traceability: where this element lives in the script
+    if(s.line){
+      const t2=document.createElementNS(SVGNS,"text");
+      t2.setAttribute("x",x+12);t2.setAttribute("y",y+NH/2+14);
+      t2.setAttribute("text-anchor","start");
+      t2.setAttribute("class","ch-sub");
+      t2.textContent=(MODEL.files.length>1?fitText(s.file,16)+" : ":t("cmLine")+" ")+s.line;
+      g.appendChild(t2);
+    }
+    const num=document.createElementNS(SVGNS,"text");
+    num.setAttribute("x",x-("branch"===s.type?22:8));
+    num.setAttribute("y",y+NH/2+3);
+    num.setAttribute("text-anchor","end");
+    num.setAttribute("class","ch-numsvg");
+    num.textContent=idx+1;
+    g.appendChild(num);
+    const ttl=document.createElementNS(SVGNS,"title");
+    ttl.textContent=chartLabel(s)+(s.src?"\n"+s.src.slice(0,200):"");
+    g.appendChild(ttl);
+    g.addEventListener("click",()=>goto(idx));
+    // code link sits inside the node on the reference line, so it can no
+    // longer collide with the node text or with a diamond's point
+    if(s.src){
+      const cc=document.createElementNS(SVGNS,"text");
+      cc.setAttribute("x",x+NW-9);
+      cc.setAttribute("y",y+NH/2+14);
+      cc.setAttribute("text-anchor","end");
+      cc.setAttribute("class","ch-codelink");
+      cc.textContent="‹/›";
+      cc.addEventListener("click",ev=>{ev.stopPropagation();openCodeStep(s)});
+      g.appendChild(cc);
+    }
+    s2.appendChild(g);
+  });
+  flow.appendChild(s2);
+  const pal=document.getElementById("chartPal");pal.innerHTML="";palEls={};
+  // every palette section is collapsible so the sidebar stays quiet
+  const section=(title,openByDefault)=>{
+    const h=document.createElement("div");
+    h.className="pal-sec"+(openByDefault?" open":"");
+    h.innerHTML=`<span class="tw">▸</span><span>${title}</span>`;
+    const body=document.createElement("div");
+    body.className="pal-body"+(openByDefault?" open":"");
+    h.onclick=()=>{h.classList.toggle("open");body.classList.toggle("open")};
+    pal.appendChild(h);pal.appendChild(body);
+    return body;
+  };
+  // settings box first
+  const setBody=section(t("settingsHdr"),true);
+  const set=document.createElement("div");set.className="pal-set";
+  set.innerHTML=`<b>${t("settingsHdr")}</b><br><span class="pk">${t("settingsHint")}</span>`
+    +(MODEL.variables.length
+      ?MODEL.variables.map(v=>`<div class="pv"><code>${v.name}</code> = <b>${esc(String(v.value))}</b> <span class="pk">${esc(v.file)} : ${v.line}</span></div>`).join("")
+      :`<div class="pv pk">${t("ovNone")}</div>`);
+  setBody.appendChild(set);
+  // functions grouped by file, with the steps where each is called
+  const callIdx={};
+  steps.forEach((s,idx)=>{if(s.type==="call"){
+    (callIdx[s.target]=callIdx[s.target]||[]).push(idx)}});
+  const addItem=(f,helper)=>{
+    const p=document.createElement("div");
+    p.className="pal-item"+(helper?" helper":"");
+    p.style.opacity=helper?".6":"1";
+    const calls=callIdx[f.id]||[];
+    p.innerHTML=`<b>${esc(f.name)}</b> <span class="pk">${f.kind} · ${t("clickCode")}</span>
+      <div class="psteps">${calls.length
+        ?calls.slice(0,12).map(i=>`<span class="pstep" data-i="${i}">${i+1}</span>`).join("")
+        :`<span class="pk">${t("neverCalled")}</span>`}</div>`;
+    p.onclick=()=>openCode(f.id);
+    p.querySelectorAll(".pstep").forEach(ps=>{
+      ps.onclick=e=>{e.stopPropagation();goto(+ps.getAttribute("data-i"))}});
+    palEls[f.id]=p;
+    (palTarget||pal).appendChild(p);
+  };
+  let firstGroup=true;
+  fileOrder.forEach(fn=>{
+    const fns=MODEL.functions.filter(f=>f.file===fn).sort((a,b)=>a.line-b.line);
+    if(!fns.length)return;
+    const body=section(fn+" ("+fns.length+")",firstGroup);
+    firstGroup=false;
+    palTarget=body;
+    fns.filter(f=>!f.helper).forEach(f=>addItem(f,false));
+    const helpers=fns.filter(f=>f.helper);
+    if(helpers.length){
+      const hh=document.createElement("div");hh.className="pal-hdr";
+      hh.style.fontSize=".72rem";hh.style.color="var(--muted)";
+      hh.textContent="· "+t("helpersHdr");
+      body.appendChild(hh);
+      helpers.forEach(f=>addItem(f,true));
+    }
+    palTarget=null;
+  });
+}
+
+/* ---------------------------------------------- storyboard ----
+   A review table: what happens, which component it belongs to, and the
+   code itself - either grouped by component or as one full run. */
+let storyMode="component";
+const signed=new Set();
+
+function phaseOf(s){
+  if(s.type==="import"||s.type==="include"||s.type==="start")return "setup";
+  if(s.type==="effect"){
+    if(s.kind==="pkg")return "setup";
+    if(s.kind==="table"||s.kind==="column"||s.kind==="tableop"||s.kind==="file")
+      return "data";
+    if(s.kind==="report"||s.kind==="model"||s.kind==="plot")return "analysis";
+    if(s.kind==="window"||s.kind==="log"||s.kind==="error")return "output";
+  }
+  return "flow";
+}
+function ownerLabel(s){
+  const n=ownerName(s.owner);
+  return n||t("topLevelGroup");
+}
+function snippet(s,maxLines){
+  const txt=(s.src||"").replace(/\t/g,"    ").split("\n");
+  const cut=txt.slice(0,maxLines||3).join("\n");
+  return cut+(txt.length>(maxLines||3)?"\n…":"");
+}
+function setStoryMode(m){storyMode=m;renderStory();renderState(cur)}
+
+function storyRow(s,idx){
+  const tr=document.createElement("tr");
+  tr.id="sb-"+idx; tr.className="sb-row";
+  tr.onclick=()=>goto(idx);
+  const ph=phaseOf(s);
+  const tags=(s.conditional?`<span class="tag cond">${t("conditional")}</span>`:"")
+    +(s.loop?`<span class="tag loop">${t("inLoop")}</span>`:"")
+    +(s.lang&&s.lang!=="jsl"&&LANG_SHORT[s.lang]?`<span class="pill ${s.lang}">${LANG_SHORT[s.lang]}</span>`:"");
+  tr.innerHTML=
+     `<td class="c-num">${idx+1}</td>`
+    +`<td class="c-what"><span class="ic">${stepIcon(s)}</span><span>${sentence(s)}</span> ${tags}</td>`
+    +`<td class="c-belong"><div class="own">${esc(ownerLabel(s))}</div>`
+      +`<div class="ph ph-${ph}">${t("phase")[ph]}</div>`
+      +`<div class="loc">${esc(lineRef(s)||s.file)}</div></td>`
+    +`<td class="c-code">${s.src?`<pre class="snip">${esc(snippet(s))}</pre>`:""}</td>`
+    +`<td class="c-done"><input type="checkbox" ${signed.has(idx)?"checked":""}></td>`;
+  const pre=tr.querySelector(".snip");
+  if(pre)pre.onclick=e=>{e.stopPropagation();openCodeStep(s)};
+  const cb=tr.querySelector("input");
+  cb.onclick=e=>{e.stopPropagation();
+    if(cb.checked)signed.add(idx);else signed.delete(idx);
+    saveSigned();updateReviewCount();};
+  return tr;
+}
+
+function renderStory(){
+  const box=document.getElementById("story");box.innerHTML="";
+  const bar=document.createElement("div");bar.className="sb-toolbar";
+  bar.innerHTML=`<div class="viewsw">
+      <button id="modeComp" class="${storyMode==="component"?"on":""}">${t("modeComponent")}</button>
+      <button id="modeFlow" class="${storyMode==="flow"?"on":""}">${t("modeFlow")}</button>
+    </div>
+    <span class="revcount" id="revCount"></span>
+    <button class="toolbtn" id="btnMarkAll">${t("markAll")}</button>
+    <button class="toolbtn" id="btnClearRev">${t("clearReview")}</button>`;
+  box.appendChild(bar);
+  bar.querySelector("#modeComp").onclick=()=>setStoryMode("component");
+  bar.querySelector("#modeFlow").onclick=()=>setStoryMode("flow");
+  bar.querySelector("#btnMarkAll").onclick=()=>{
+    for(let i=0;i<=cur;i++)signed.add(i);
+    saveSigned();renderStory();renderState(cur)};
+  bar.querySelector("#btnClearRev").onclick=()=>{
+    signed.clear();saveSigned();renderStory();renderState(cur)};
+
+  const tbl=document.createElement("table");tbl.className="sb-table";
+  tbl.innerHTML=`<thead><tr><th class="c-num">${t("colStep")}</th>
+    <th>${t("colWhat")}</th><th class="c-belong">${t("colBelongs")}</th>
+    <th class="c-code">${t("colCode")}</th><th class="c-done">${t("colDone")}</th>
+    </tr></thead>`;
+  const tb=document.createElement("tbody");
+  if(storyMode==="flow"){
+    steps.forEach((s,idx)=>tb.appendChild(storyRow(s,idx)));
+  }else{
+    const order=[],groups={};
+    steps.forEach((s,idx)=>{
+      const key=s.owner||"?";
+      if(!groups[key]){groups[key]=[];order.push(key)}
+      groups[key].push(idx);
+    });
+    order.forEach(key=>{
+      const f=fnById[key];
+      const head=document.createElement("tr");
+      head.className="sb-group";
+      const nm=key.endsWith("::__top__")
+        ? t("topLevelGroup")+" — "+key.split("::")[0] : ownerName(key);
+      head.innerHTML=`<td colspan="5"><b>${esc(nm)}</b>`
+        +(f?` <span class="k">${f.kind}${f.args&&f.args.length?"("+esc(f.args.join(", "))+")":""}</span>`:"")
+        +(f&&f.doc?` <span class="k">— ${esc(f.doc)}</span>`:"")
+        +` <span class="gcount">${groups[key].length}</span></td>`;
+      if(f)head.onclick=()=>openCode(key);
+      tb.appendChild(head);
+      groups[key].forEach(idx=>tb.appendChild(storyRow(steps[idx],idx)));
+    });
+  }
+  tbl.appendChild(tb);box.appendChild(tbl);
+  updateReviewCount();
+}
+function updateReviewCount(){
+  const el=document.getElementById("revCount");
+  if(el)el.textContent=signed.size+" / "+steps.length+" "+t("reviewedOf");
+}
+function saveSigned(){
+  try{localStorage.setItem("flowlens_signed_"+(MODEL.entry||""),
+      JSON.stringify([...signed]))}catch(e){}
+}
+function loadSigned(){
+  try{const v=JSON.parse(localStorage.getItem("flowlens_signed_"+(MODEL.entry||"")));
+    if(Array.isArray(v))v.forEach(i=>signed.add(i))}catch(e){}
+}
+
+/* ------------------------------------------------ coverage ----
+   Which lines of the real script does the walk-through actually touch?
+   Green = reached, blue = represented but not reached yet, amber = code
+   no step represents at all (this is where the model is thin). */
+let lensFile=null;
+
+function stepRange(s){
+  const a=s.srcline||s.line||0;
+  if(!a)return null;
+  const n=s.src?s.src.split("\n").length:1;
+  return [a,a+n-1];
+}
+function isCodeLine(txt,lang,inBlock){
+  const t2=txt.trim();
+  if(!t2)return {code:false,inBlock:inBlock};
+  if(lang==="python")return {code:!t2.startsWith("#"),inBlock:false};
+  let b=inBlock,code=true;
+  if(b){code=false;if(t2.includes("*/"))b=false;return {code:false,inBlock:b}}
+  if(t2.startsWith("//"))code=false;
+  else if(t2.startsWith("/*")){code=false;if(!t2.includes("*/"))b=true}
+  return {code:code,inBlock:b};
+}
+/* housekeeping statements that have no runtime effect worth a step */
+const DECL_RE=/^\s*(Names\s+Default\s+To\s+Here|Clear\s+Globals|Delete\s+Symbols|Clear\s+Log|Clear\s+Symbols)\b/i;
+
+/* a hidden step maps to the nearest visible step at or before it, so
+   clicking its line still lands somewhere sensible in the walk-through */
+function nearestVisible(mi,posOf){
+  for(let k=mi;k>=0;k--)if(posOf[k]!==undefined)return posOf[k];
+  return 0;
+}
+function coverageFor(fileName,upto){
+  const fe=fileEntry(fileName);
+  if(!fe)return null;
+  const lines=(fe.source||"").split("\n");
+  const ranges=fe.code_ranges||[{from:1,to:lines.length,lang:fe.lang}];
+  const langAt=ln=>{for(const r of ranges)if(ln>=r.from&&ln<=r.to)return r.lang||fe.lang;return null};
+  // "represented" must not depend on the display filters, so it is built
+  // from every step in the model - not just the ones currently shown
+  const modelled=new Set(),owner={};
+  MODEL.steps.forEach(s=>{
+    if(s.file!==fileName)return;
+    const r=stepRange(s);if(!r)return;
+    for(let l=r[0];l<=r[1];l++)modelled.add(l);
+  });
+  // "reached" is measured against the model, not the filtered list: walking
+  // past a visible step also passes the quiet steps hidden between them
+  const modelUpto=(steps[upto]&&steps[upto].i!==undefined)?steps[upto].i:-1;
+  const posOf={};steps.forEach((s,idx)=>{if(s.i!==undefined)posOf[s.i]=idx});
+  const reached=new Set();
+  MODEL.steps.forEach((s,mi)=>{
+    if(s.file!==fileName)return;
+    const r=stepRange(s);if(!r)return;
+    for(let l=r[0];l<=r[1];l++){
+      if(owner[l]===undefined)
+        owner[l]=(posOf[mi]!==undefined)?posOf[mi]:nearestVisible(mi,posOf);
+      if(mi<=modelUpto)reached.add(l);
+    }
+  });
+  // code explained somewhere other than a step: the scaffolding of a
+  // function/expression definition, a declared setting, or housekeeping
+  const explained=new Set();
+  MODEL.functions.filter(f=>f.file===fileName).forEach(f=>{
+    for(let l=f.line;l<=(f.endline||f.line);l++)explained.add(l)});
+  MODEL.variables.filter(v=>v.file===fileName).forEach(v=>explained.add(v.line));
+
+  const state=[],counts={code:0,reached:0,modelled:0,explained:0,gap:0};
+  let inBlock=false;
+  for(let i=0;i<lines.length;i++){
+    const ln=i+1,lang=langAt(ln);
+    if(lang===null){state.push("noncode");inBlock=false;continue}
+    const r=isCodeLine(lines[i],lang,inBlock);inBlock=r.inBlock;
+    if(!r.code){state.push("noncode");continue}
+    counts.code++;
+    if(reached.has(ln)){state.push("reached");counts.reached++;counts.modelled++}
+    else if(modelled.has(ln)){state.push("modelled");counts.modelled++}
+    else if(explained.has(ln)||DECL_RE.test(lines[i])){
+      state.push("explained");counts.explained++}
+    else{state.push("gap");counts.gap++}
+  }
+  return {lines:lines,state:state,counts:counts,owner:owner};
+}
+
+function renderLens(){
+  const box=document.getElementById("lens");
+  const names=MODEL.files.map(f=>f.name);
+  if(!lensFile||names.indexOf(lensFile)<0){
+    lensFile=(steps[cur]&&names.indexOf(steps[cur].file)>=0)
+      ? steps[cur].file : (MODEL.entry||names[0]);
+  }
+  const cov=coverageFor(lensFile,cur);
+  box.innerHTML="";
+  const bar=document.createElement("div");bar.className="lens-bar";
+  let picker="";
+  if(names.length>1){
+    picker=`<select id="lensPick">`+names.map(n=>
+      `<option ${n===lensFile?"selected":""}>${esc(n)}</option>`).join("")+`</select>`;
+  }else picker=`<b>${esc(lensFile)}</b>`;
+  const c=cov?cov.counts:{code:0,reached:0,modelled:0,explained:0,gap:0};
+  const pct=c.code?Math.round(c.reached/c.code*100):0;
+  const pctM=c.code?Math.round((c.modelled+c.explained)/c.code*100):0;
+  bar.innerHTML=picker
+    +`<div class="lens-nums"><b>${c.reached}</b> ${t("covOf")} <b>${c.code}</b> `
+    +`${t("covLines")} ${t("covReached")} (${pct}%) · `
+    +`<span class="k">${c.modelled+c.explained} ${t("covModelled")} (${pctM}%)</span>`
+    +(c.gap?` · <span class="gapnum">${c.gap} ${t("covNotModelled")}</span>`:"")+`</div>`
+    +`<div class="lens-prog"><div style="width:${pct}%"></div>
+       <div class="mod" style="width:${pctM}%"></div></div>`;
+  box.appendChild(bar);
+  const legend=document.createElement("div");legend.className="lens-legend";
+  legend.innerHTML=`<span><i class="sw reached"></i>${t("covLegendReached")}</span>`
+    +`<span><i class="sw modelled"></i>${t("covLegendModelled")}</span>`
+    +`<span><i class="sw explained"></i>${t("covLegendExplained")}</span>`
+    +`<span><i class="sw gap"></i>${t("covLegendGap")}</span>`
+    +`<span><i class="sw noncode"></i>${t("covLegendNonCode")}</span>`
+    +`<span class="k">${c.gap?t("covHint"):t("covPerfect")}</span>`;
+  box.appendChild(legend);
+  const pre=document.createElement("div");pre.className="lens-code";
+  if(cov){
+    const curRange=steps[cur]&&steps[cur].file===lensFile?stepRange(steps[cur]):null;
+    pre.innerHTML=cov.lines.map((ln,i)=>{
+      const no=i+1,st=cov.state[i];
+      const isCur=curRange&&no>=curRange[0]&&no<=curRange[1];
+      return `<div class="lc ${st}${isCur?" curline":""}" data-l="${no}">`
+        +`<span class="ln">${no}</span><span class="lt">${esc(ln)||" "}</span></div>`;
+    }).join("");
+  }
+  box.appendChild(pre);
+  const sel=document.getElementById("lensPick");
+  if(sel)sel.onchange=()=>{lensFile=sel.value;renderLens()};
+  pre.querySelectorAll(".lc").forEach(el2=>{
+    el2.onclick=()=>{const l=+el2.getAttribute("data-l");
+      const idx=cov.owner[l];if(idx!==undefined)goto(idx)};
+  });
+  const curEl=pre.querySelector(".curline");
+  if(curEl&&curEl.scrollIntoView)curEl.scrollIntoView({block:"center"});
+}
+
+/* ---------------------------------------------- animation ---- */
+let cur=-1,playing=false,timer=null;
+function renderState(i){
+  cur=i;
+  for(const id in nodeEls)nodeEls[id].setAttribute("class","node");
+  for(const k in edgeEls)edgeEls[k].setAttribute("class",
+      edgeEls[k].getAttribute("class").replace(/ lit| cur/g,""));
+  const tray=document.getElementById("tray");tray.innerHTML="";
+  const visited=new Set();
+  for(let k=0;k<=i&&k<steps.length;k++){
+    const s=steps[k];
+    visited.add(s.owner);
+    if(s.type==="call"){visited.add(s.target);
+      const e=edgeEls[s.owner+"->"+s.target];
+      if(e&&!e.getAttribute("class").includes("lit"))
+        e.setAttribute("class",e.getAttribute("class")+" lit");}
+    if(s.type==="effect"&&s.kind!=="log"){
+      const c=document.createElement("span");
+      c.className="chip "+(s.kind==="error"?"err":s.kind);
+      c.textContent=FX_ICON[s.kind]+" "+(s.detail||s.kind)+(s.count>1?" ×"+s.count:"");
+      tray.appendChild(c);}
+  }
+  visited.forEach(id=>{if(nodeEls[id])nodeEls[id].setAttribute("class","node visited")});
+  const s=steps[i];
+  if(s){
+    const focus=s.type==="call"?s.target:s.owner;
+    if(nodeEls[focus])nodeEls[focus].setAttribute("class","node current");
+    if(s.type==="call"){
+      if(nodeEls[s.owner])nodeEls[s.owner].setAttribute("class","node visited");
+      const e=edgeEls[s.owner+"->"+s.target];
+      if(e)e.setAttribute("class",e.getAttribute("class")+" cur");
+    }
+    if(view==="flow")followNode(focus);
+  }
+  const ban=document.getElementById("banner");
+  ban.innerHTML=s?`<span style="font-size:1.2rem">${stepIcon(s)}</span>`
+    +`<span>${sentence(s)}</span>`
+    +(s.line?`<span class="lineref">${esc(s.file)} : ${s.line}</span>`:"")
+
+    +(s.src?`<span class="codelink" id="bannerCode">‹/› ${t("codeLink")}</span>`:""):"";
+  const bc=document.getElementById("bannerCode");
+  if(bc)bc.onclick=()=>openCodeStep(s);
+  document.querySelectorAll("#stepList li").forEach((li,idx)=>{
+    li.className=idx<i?"done":idx===i?"cur":""});
+  scrollTo_("step-"+i);
+  if(view==="story"){
+    document.querySelectorAll(".sb-row").forEach(r=>{
+      const idx=+r.id.split("-")[1];
+      r.className="sb-row "+(idx<i?"done":idx===i?"cur":"future")});
+    scrollTo_("sb-"+i);
+  }
+  if(view==="lens")renderLens();
+  if(view==="chart"){
+    document.querySelectorAll("#chartFlow .ch-node").forEach((r,idx)=>{
+      r.setAttribute("class",(r.getAttribute("data-base")||"ch-node")+" "
+        +(idx<i?"done":idx===i?"cur":"future"))});
+    scrollTo_("ch-"+i);
+    for(const k in palEls)palEls[k].classList.remove("cur");
+    if(s){
+      const pid=s.type==="call"?s.target:(fnById[s.owner]?s.owner:null);
+      if(pid&&palEls[pid]){palEls[pid].classList.add("cur");
+        if(palEls[pid].scrollIntoView)palEls[pid].scrollIntoView({block:"nearest"});}
+    }
+  }
+  document.getElementById("stepInfo").textContent=(i+1)+" / "+steps.length;
+  document.getElementById("progressBar").style.width=((i+1)/Math.max(1,steps.length)*100)+"%";
+}
+function scrollTo_(id){
+  const n=document.getElementById(id);
+  if(n&&n.scrollIntoView)n.scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+function followNode(id){
+  const n=nodes[id],w=document.getElementById("diagramWrap");
+  if(!n||!w||!w.scrollTo)return;
+  const tx=n.x+n.w/2-w.clientWidth/2, ty=n.y+n.h/2-w.clientHeight/2;
+  w.scrollTo({left:Math.max(0,tx),top:Math.max(0,ty),behavior:"smooth"});
+}
+function goto(i){pause();renderState(Math.max(0,Math.min(steps.length-1,i)))}
+function next(){if(cur<steps.length-1)renderState(cur+1);else pause()}
+function play(){if(playing)return pause();playing=true;
+  document.getElementById("btnPlay").textContent="⏸";
+  if(cur>=steps.length-1)renderState(0);
+  timer=setInterval(()=>{if(cur<steps.length-1)next();else pause()},
+    +document.getElementById("speed").value);}
+function pause(){playing=false;document.getElementById("btnPlay").textContent="▶";
+  if(timer){clearInterval(timer);timer=null}}
+
+document.getElementById("btnPlay").onclick=play;
+document.getElementById("btnNext").onclick=()=>{pause();next()};
+document.getElementById("btnPrev").onclick=()=>goto(cur-1);
+document.getElementById("btnFirst").onclick=()=>goto(0);
+document.getElementById("btnLast").onclick=()=>goto(steps.length-1);
+document.getElementById("speed").onchange=()=>{if(playing){pause();play()}};
+document.getElementById("progress").onclick=e=>{
+  const r=e.currentTarget.getBoundingClientRect();
+  goto(Math.floor((e.clientX-r.left)/r.width*steps.length))};
+function toggleOpts(){
+  const b=document.getElementById("optbar");
+  b.classList.toggle("open");
+  document.getElementById("btnOpts").className=
+    "toolbtn"+(b.classList.contains("open")?" on":"");
+}
+function toggleExpl(){
+  const m=document.querySelector("main");
+  m.classList.toggle("solo");
+  document.getElementById("btnExpl").className=
+    "toolbtn"+(m.classList.contains("solo")?"":" on");
+  renderState(cur);
+}
+document.getElementById("stmtToggle").onchange=e=>{
+  showStmts=e.target.checked;rebuild(0)};
+document.getElementById("logToggle").onchange=e=>{
+  showLogs=e.target.checked;rebuild(0)};
+document.getElementById("helperToggle").onchange=e=>{
+  showHelpers=e.target.checked;rebuild(0)};
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape")return closeCode();
+  if(e.key==="ArrowRight"){pause();next()}
+  if(e.key==="ArrowLeft")goto(cur-1);
+  if(e.key===" "){e.preventDefault();play()}});
+document.getElementById("codeModal").addEventListener("click",e=>{
+  if(e.target.id==="codeModal")closeCode()});
+
+/* ------------------------------------------- print report ----
+   A paper-shaped review document: header, overview, the full step table
+   and a coverage summary per file. Diagrams stay on screen. */
+function buildPrintReport(){
+  const r=document.getElementById("printReport");
+  const m=MODEL;
+  let h=`<h1>${t("reportTitle")}</h1>`
+   +`<div class="p-meta">${esc(m.entry||"")} · ${t("reportGenerated")}: `
+   +`${new Date().toLocaleString()} · JSL FlowLens v${m.meta.version}</div>`;
+  h+=`<div class="p-block">${document.getElementById("overview").innerHTML}</div>`;
+  h+=`<h2>${t("reportFiles")}</h2><ul class="p-files">`;
+  m.files.forEach(f=>{
+    const c=coverageFor(f.name,steps.length-1);
+    const cc=c?c.counts:{code:0,modelled:0,gap:0};
+    const pct=cc.code?Math.round(cc.modelled/cc.code*100):0;
+    h+=`<li><b>${esc(f.name)}</b> <span class="k">(${LANG_LABEL[f.lang]||f.lang}, `
+      +`${f.n_lines} lines)</span> — ${cc.modelled}/${cc.code} ${t("covLines")} `
+      +`${t("covModelled")} (${pct}%)`
+      +(cc.gap?`, <b>${cc.gap} ${t("covNotModelled")}</b>`:"")+`</li>`;
+  });
+  h+=`</ul>`;
+  h+=`<h2>${t("reportSteps")} (${steps.length})</h2>`;
+  h+=`<table class="p-table"><thead><tr><th>#</th><th>${t("colWhat")}</th>`
+    +`<th>${t("colBelongs")}</th><th>${t("colCode")}</th><th>${t("colDone")}</th>`
+    +`</tr></thead><tbody>`;
+  steps.forEach((s,idx)=>{
+    const ph=phaseOf(s);
+    h+=`<tr><td>${idx+1}</td><td>${sentence(s)}</td>`
+      +`<td>${esc(ownerLabel(s))}<br><span class="k">${t("phase")[ph]} · `
+      +`${esc(lineRef(s)||s.file)}</span></td>`
+      +`<td><pre>${esc(snippet(s,4))}</pre></td>`
+      +`<td>${signed.has(idx)?"✓":""}</td></tr>`;
+  });
+  h+=`</tbody></table>`;
+  // gaps worth reviewing by hand
+  let gaps="";
+  m.files.forEach(f=>{
+    const c=coverageFor(f.name,steps.length-1);
+    if(!c||!c.counts.gap)return;
+    const nums=[];
+    c.state.forEach((st,i)=>{if(st==="gap")nums.push(i+1)});
+    gaps+=`<li><b>${esc(f.name)}</b>: ${t("covLines")} ${nums.join(", ")}</li>`;
+  });
+  if(gaps)h+=`<h2>${t("covNotModelled")}</h2><ul class="p-files">${gaps}</ul>`;
+  h+=`<div class="p-note">${t("printNote")}</div>`;
+  r.innerHTML=h;
+}
+function printReport(){buildPrintReport();window.print()}
+window.addEventListener("beforeprint",buildPrintReport);
+
+/* ------------------------------------------------- boot ---- */
+function setView(v){
+  view=v;
+  document.getElementById("viewFlow").className=v==="flow"?"on":"";
+  document.getElementById("viewChart").className=v==="chart"?"on":"";
+  document.getElementById("viewStory").className=v==="story"?"on":"";
+  document.getElementById("viewLens").className=v==="lens"?"on":"";
+  document.getElementById("diagramWrap").style.display=v==="flow"?"block":"none";
+  document.getElementById("chart").style.display=v==="chart"?"flex":"none";
+  document.getElementById("story").style.display=v==="story"?"block":"none";
+  document.getElementById("lens").style.display=v==="lens"?"block":"none";
+  document.getElementById("tray").style.display=v==="lens"?"none":"flex";
+  renderState(Math.max(0,cur));
+}
+function rebuild(keep){
+  computeSteps();
+  renderOverview();renderStepList();renderStory();renderChart();
+  renderState(Math.min(Math.max(0,keep),Math.max(0,steps.length-1)));
+}
+function setLang(l){lang=l;
+  document.getElementById("langEn").className=l==="en"?"on":"";
+  document.getElementById("langDe").className=l==="de"?"on":"";
+  document.querySelectorAll("[data-i18n]").forEach(n=>{
+    n.textContent=t(n.getAttribute("data-i18n"))});
+  document.getElementById("btnPrint").textContent="🖨 "+t("printBtn");
+  document.getElementById("btnOpts").textContent="⚙ "+t("optsBtn");
+  document.getElementById("btnExpl").textContent="☰ "+t("explBtn");
+  rebuild(cur);
+  // keep an open code viewer in sync with the language
+  if(document.getElementById("codeModal").style.display==="flex")renderCode();
+}
+document.getElementById("foot").textContent=
+  "JSL FlowLens v"+MODEL.meta.version+" · "+MODEL.meta.generated+" · MIT License";
+loadSigned();
+document.querySelector("main").classList.add("solo");   // sidebar starts closed
+setLang(lang);
+setView("flow");
+</script>
+</body>
+</html>
