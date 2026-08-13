@@ -1,5 +1,5 @@
 // ============================================================
-// JSL FlowLens v0.6.0
+// JSL FlowLens v0.8.0
 // Understand any JMP script: JSL, Python, JMP Notebooks or a whole
 // add-in - explained, animated and traceable to the source lines.
 //
@@ -9,8 +9,8 @@
 
 Names Default To Here(1);
 
-sl_version = "0.6.0";
-sl_build = "2026-08-07";
+sl_version = "0.8.0";
+sl_build = "2026-08-11";
 sl_addin_id = "FVT.JSLFlowLens";
 sl_settings_path = "$DOCUMENTS/JSL_FlowLens_Settings.txt";
 

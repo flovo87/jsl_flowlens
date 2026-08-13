@@ -23,7 +23,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-VERSION = "0.6.0"
+VERSION = "0.8.0"
 MAX_STEPS = 400
 MAX_EMBED_CHARS = 250000   # per-file source embedded in the HTML output
 
@@ -205,6 +205,15 @@ EFFECT_PATTERNS.append(("window", re.compile(
     r"\b(Column Dialog|Modal Dialog)\s*\(", re.I)))
 
 CONTAINER_RE = re.compile(r"^\s*(If|For|While|Try)\s*\(")
+
+# interactive choices: each button in a window is a separate path the user
+# can take, not another statement in one long sequence
+BUTTON_RE = re.compile(r"\b(Button Box|Radio Box|Combo Box)\s*\(", re.I)
+# launching another script or add-in starts a sub-application
+LAUNCH_RE = re.compile(
+    r"\b(Run JSL File|Run Program|Install Add ?In|Open Add ?In)\s*\(\s*(\"([^\"]*)\")?",
+    re.I)
+ADDIN_HOME_RE = re.compile(r"\$ADDIN_HOME\s*\(\s*([^)]*)\)", re.I)
 
 # JSL <-> Python bridge
 PYSUBMIT_RE = re.compile(r"\bPython\s+Submit\s*\(", re.I)
@@ -895,9 +904,39 @@ class Walker:
                                    f"{target}::__top__", depth, cond, loop,
                                    stack)
                 continue
+            # --- interactive choices ---------------------------------
+            # Buttons in a window are alternative paths. Their actions are
+            # cut out of the statement so the surrounding scan does not
+            # report them as part of the main sequence, then each one is
+            # walked as its own branch.
+            buttons, masked = [], stmt
+            for bm in BUTTON_RE.finditer(stmt):
+                bopen = stmt.find("(", bm.end() - 1)
+                bclose = match_paren(stmt, bopen)
+                if bclose == -1:
+                    continue
+                binner = stmt[bopen + 1:bclose]
+                parts = split_top_level(binner, ",")
+                if not parts:
+                    continue
+                label, _ = read_jsl_string(binner, 0)
+                if label is None:
+                    label = parts[0][1].strip()[:40]
+                act_off = parts[1][0] if len(parts) > 1 else None
+                buttons.append({
+                    "label": label,
+                    "line": line_of(base_code, base_off + off + bm.start()),
+                    "src": stmt[bm.start():bclose + 1][:2000],
+                    "act": binner[act_off:] if act_off is not None else "",
+                    "act_off": bopen + 1 + (act_off or 0),
+                })
+                if act_off is not None:      # blank the action out
+                    a, b = bopen + 1 + act_off, bclose
+                    masked = masked[:a] + (" " * (b - a)) + masked[b:]
+
             emitted = 0
             for ev_off, ev_type, payload in scan_events(
-                    stmt, base_code, base_off + off, self.defs.keys()):
+                    masked, base_code, base_off + off, self.defs.keys()):
                 emitted += 1
                 if ev_type == "effect":
                     kind, detail, line = payload
@@ -919,6 +958,17 @@ class Walker:
                         self.walk_span(d["body"], self.files[d["file"]].clean,
                                        d["body_off"], d["file"], d["id"],
                                        depth + 1, cond, loop, stack | {name})
+            # each button becomes a choice node with its own sub-path
+            for b in buttons:
+                self.emit(type="choice", file=file, owner=owner,
+                          detail=b["label"], line=b["line"], depth=depth,
+                          conditional=True, loop=loop, src=b["src"],
+                          srcline=b["line"])
+                emitted += 1
+                if b["act"].strip():
+                    self.walk_span(b["act"], base_code,
+                                   base_off + off + b["act_off"], file, owner,
+                                   depth + 1, True, loop, stack)
             # A statement that produces no recognised effect or call still runs
             # (assignments, computations). It gets a quiet step of its own so
             # every executed line is accounted for in the coverage view.

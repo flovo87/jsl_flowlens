@@ -4,6 +4,49 @@ All notable changes to JSL FlowLens are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project
 uses [semantic versioning](https://semver.org/).
 
+## [0.8.0] — 2026-08-07
+
+The Flow view's capabilities carried across to the other three views, as noted
+in `docs/BACKLOG.md`.
+
+### Added
+- **One shared control strip.** Layout, filters, search, zoom and focus now sit
+  in a single bar whose sections appear according to the active view, instead
+  of being available only in Flow.
+- **Search, in every view** — a single box that highlights matching items in
+  Flow, matching nodes in the Flowchart, filters rows in the Storyboard and
+  highlights matching lines in Coverage, with a match count.
+- **Flowchart**: zoom in / out / reset (it could already exceed 1800 px on the
+  small architecture demo), a shape legend, focus by double-click that keeps a
+  node's ancestors and sub-tree and dims every other path, and a
+  *Structure only* filter that strips effect nodes down to the skeleton.
+- **Storyboard**: filters per phase, each with its count, and *Unreviewed only*
+  for working through what is still unsigned.
+- **Coverage**: *Gaps only* plus *Prev gap* / *Next gap* navigation, and a
+  font-size zoom for long files.
+
+## [0.7.0] — 2026-08-07
+
+Final item of the continuous-improvement list (item F).
+
+### Added
+- **The flowchart shows architecture instead of one strand.** Every button in
+  a dialog is now a *choice*: the parser cuts each button's action out of the
+  surrounding statement and walks it as its own path, so alternatives are no
+  longer reported as if they all ran in sequence. The flowchart lays the steps
+  out as a tree - sequential steps stack downwards, alternative choices fan out
+  side by side, each with its own sub-tree.
+- Choice nodes are drawn as purple decision shapes with their own connectors,
+  and are explained as "this path runs only if the user picks it".
+- `Run JSL File`, `Run Program` and add-in installs are recognised as launches
+  of a sub-application.
+
+### Notes
+- On the bundled `demo/architecture` example - a launch pad whose four buttons
+  run different tools - the four choices now sit in parallel at the same level,
+  each above what it actually does. Previously all of it appeared as one
+  sequence, which is what prompted this change.
+
 ## [0.6.0] — 2026-08-07
 
 Second batch of the continuous-improvement list (items B, D and E).

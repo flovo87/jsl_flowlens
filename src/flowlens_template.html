@@ -81,6 +81,15 @@
             font-size:.66rem;letter-spacing:.4px}
   .gbar .viewsw button{min-width:0;height:28px;padding:0 10px;font-size:.75rem}
   .gsep{width:1px;height:20px;background:var(--lane)}
+  .gsec{display:none;align-items:center;gap:8px}
+  .gsec.on{display:flex}
+  .gsearch{height:28px;padding:0 10px;font-size:.78rem;border-radius:8px;
+           border:1px solid var(--node-border);min-width:150px;background:var(--panel)}
+  .gsearch:focus{outline:none;border-color:var(--accent)}
+  .ginfo{font-size:.72rem;color:var(--muted);min-width:56px}
+  .node.hit rect{stroke:var(--jmp-orange);stroke-width:3}
+  .ch-node.hit rect,.ch-node.hit polygon{stroke:var(--jmp-orange);stroke-width:3}
+  .lc.hit{outline:2px solid var(--jmp-orange);outline-offset:-2px}
   .gfilters{display:flex;gap:4px;flex-wrap:wrap}
   .gfilters button{height:28px;padding:0 10px;font-size:.75rem;font-weight:600;
                    border:1px solid var(--node-border);background:var(--panel);
@@ -115,6 +124,9 @@
   #chartFlow::before{display:none}
   .ch-node rect,.ch-node polygon{fill:var(--panel);stroke:var(--node-border);stroke-width:1.4}
   .ch-node.branch polygon{stroke:var(--warn)}
+  .ch-node.choice polygon{stroke:var(--jmp-purple);fill:var(--jmp-purple-soft)}
+  .ch-node.choice text{font-weight:600}
+  .ch-conn.ch-branch{stroke:var(--jmp-purple);stroke-width:1.8}
   .ch-node.loop rect{stroke:var(--ok)}
   .ch-node.startn rect{stroke:var(--accent);stroke-width:1.8}
   .ch-node.wf rect{stroke:var(--accent);stroke-dasharray:none;fill:#f0f5fe}
@@ -127,6 +139,7 @@
   .ch-node .ch-sub{font-size:9px;fill:#94a1b6;font-family:Consolas,Monaco,monospace}
   .ch-node.done rect,.ch-node.done polygon{fill:#f6f8fc}
   .ch-node.future{opacity:.45}
+  .ch-node.dim{opacity:.12}
   .ch-node.cur rect,.ch-node.cur polygon{stroke:var(--accent);stroke-width:2.6;
       fill:var(--accent-soft);filter:drop-shadow(0 0 6px rgba(47,111,222,.5))}
   .ch-conn{stroke:#8896ad;stroke-width:1.5;fill:none}
@@ -259,6 +272,8 @@
   .sw.reached{background:#D3E7FA}.sw.modelled{background:#EDF3FC}
   .sw.explained{background:#eceef3}
   .sw.gap{background:var(--jmp-orange-soft)}.sw.noncode{background:#f4f6fa}
+  .lens-none{padding:14px;border:1px dashed var(--node-border);border-radius:8px;
+             color:var(--jmp-blue-dk);background:#EDF3FC;font-size:.85rem;margin-bottom:8px}
   .lens-code{font-family:Consolas,Monaco,monospace;font-size:.78rem;
              line-height:1.5;border:1px solid var(--lane);border-radius:8px;
              overflow:auto;max-height:56vh}
@@ -415,23 +430,31 @@
   <div class="card">
     <div id="banner"></div>
     <div class="gbar" id="gbar">
-      <span class="gl" data-i18n="layoutLabel"></span>
-      <span class="viewsw" id="layoutSel">
-        <button data-l="hierarchical" class="on" onclick="setLayout('hierarchical')" data-i18n="layoutHier"></button>
-        <button data-l="swimlane" onclick="setLayout('swimlane')" data-i18n="layoutLane"></button>
-        <button data-l="circular" onclick="setLayout('circular')" data-i18n="layoutCirc"></button>
-        <button data-l="grid" onclick="setLayout('grid')" data-i18n="layoutGrid"></button>
+      <span class="gsec" data-for="flow">
+        <span class="gl" data-i18n="layoutLabel"></span>
+        <span class="viewsw" id="layoutSel">
+          <button data-l="hierarchical" class="on" onclick="setLayout('hierarchical')" data-i18n="layoutHier"></button>
+          <button data-l="swimlane" onclick="setLayout('swimlane')" data-i18n="layoutLane"></button>
+          <button data-l="circular" onclick="setLayout('circular')" data-i18n="layoutCirc"></button>
+          <button data-l="grid" onclick="setLayout('grid')" data-i18n="layoutGrid"></button>
+        </span>
+        <span class="gsep"></span>
       </span>
-      <span class="gsep"></span>
-      <span class="gl" data-i18n="showLabel"></span>
-      <span class="gfilters" id="gfilters"></span>
-      <span class="gsep"></span>
-      <span class="zoomctl">
+      <span class="gsec" data-for="flow chart story lens">
+        <span class="gl" data-i18n="showLabel"></span>
+        <span class="gfilters" id="gfilters"></span>
+        <span class="gsep"></span>
+      </span>
+      <span class="gsec" data-for="flow chart story lens">
+        <input id="searchBox" class="gsearch" placeholder="">
+        <span id="searchInfo" class="ginfo"></span>
+      </span>
+      <span class="zoomctl gsec" data-for="flow chart lens">
         <button class="toolbtn" onclick="zoomBy(-0.15)">−</button>
         <span id="zoomPct">100%</span>
         <button class="toolbtn" onclick="zoomBy(0.15)">+</button>
         <button class="toolbtn" onclick="zoomReset()" data-i18n="zoomReset"></button>
-        <button class="toolbtn" id="btnClearFocus" onclick="setFocus(null)" data-i18n="clearFocus"></button>
+        <button class="toolbtn" id="btnClearFocus" onclick="clearFocusAll()" data-i18n="clearFocus"></button>
       </span>
     </div>
     <div id="legend" class="glegend"></div>
@@ -492,6 +515,12 @@ const I18N = {
      showLabel:"Show", fScript:"Scripts", fFunc:"Functions", fExpr:"Expressions",
      fVar:"Variables", fFlow:"Dataflow",
      zoomReset:"Reset", clearFocus:"Clear focus",
+     searchPh:"Search name or code…", matches:"matches", noMatch:"no match",
+     skeleton:"Structure only", unreviewedOnly:"Unreviewed only",
+     gapsOnly:"Gaps only", gapPrev:"Prev gap", gapNext:"Next gap",
+     legStep:"step", legDecision:"decision", legChoice:"user choice",
+     legIO:"input / output", legStart:"start / include", legLoopback:"loop back",
+     focusHintChart:"Double-click a node to follow only that path",
      legCall:"calls", legCond:"conditional call", legRead:"reads variable",
      legWrite:"writes variable", focusHint:"Double-click an item to focus on it",
      viewLens:"Coverage", printBtn:"Print / Save as PDF",
@@ -539,6 +568,8 @@ const I18N = {
      s_section:s=>`<b>Section:</b> ${esc(s.detail)}`,
      s_text:s=>`Text: <i>${esc(s.detail)}</i>`,
      s_stmt:s=>`Runs <code>${esc(s.detail)}</code>`,
+     s_choice:s=>`User choice: <b>“${esc(s.detail)}”</b> — this path runs only if the user picks it.`,
+     s_launch:s=>`Launches <b>${esc(s.detail)}</b>.`,
      fx:{table:s=>`A data table <b>“${s.detail}”</b> is created`,
          column:s=>`Column <b>“${s.detail}”</b> is added`,
          window:s=>`A window <b>${s.detail?`“${s.detail}”`:""}</b> is opened`,
@@ -569,6 +600,12 @@ const I18N = {
      showLabel:"Anzeigen", fScript:"Skripte", fFunc:"Funktionen", fExpr:"Ausdrücke",
      fVar:"Variablen", fFlow:"Datenfluss",
      zoomReset:"Zurücksetzen", clearFocus:"Fokus aufheben",
+     searchPh:"Name oder Code suchen…", matches:"Treffer", noMatch:"kein Treffer",
+     skeleton:"Nur Struktur", unreviewedOnly:"Nur ungeprüfte",
+     gapsOnly:"Nur Lücken", gapPrev:"Vorherige Lücke", gapNext:"Nächste Lücke",
+     legStep:"Schritt", legDecision:"Entscheidung", legChoice:"Auswahl",
+     legIO:"Ein-/Ausgabe", legStart:"Start / Include", legLoopback:"Schleife zurück",
+     focusHintChart:"Doppelklick folgt nur diesem Pfad",
      legCall:"ruft auf", legCond:"bedingter Aufruf", legRead:"liest Variable",
      legWrite:"schreibt Variable", focusHint:"Doppelklick fokussiert ein Element",
      viewLens:"Abdeckung", printBtn:"Drucken / als PDF sichern",
@@ -616,6 +653,8 @@ const I18N = {
      s_section:s=>`<b>Abschnitt:</b> ${esc(s.detail)}`,
      s_text:s=>`Text: <i>${esc(s.detail)}</i>`,
      s_stmt:s=>`Runs <code>${esc(s.detail)}</code>`,
+     s_choice:s=>`User choice: <b>“${esc(s.detail)}”</b> — this path runs only if the user picks it.`,
+     s_launch:s=>`Launches <b>${esc(s.detail)}</b>.`,
      fx:{table:s=>`Die Datentabelle <b>„${s.detail}“</b> wird erstellt`,
          column:s=>`Spalte <b>„${s.detail}“</b> wird hinzugefügt`,
          window:s=>`Ein Fenster <b>${s.detail?`„${s.detail}“`:""}</b> wird geöffnet`,
@@ -640,7 +679,8 @@ const FX_ICON={table:"📊",column:"🧱",window:"🪟",file:"💾",log:"💬",e
                report:"📈",tableop:"🔧",plot:"🖼️",model:"🧠",pkg:"📦",jsl:"📜"};
 const TYPE_ICON={start:"🏁",include:"📄",call:"➜",branch:"🔀",loop:"🔁",note:"ℹ️",
                  wfstep:"🏷️",import:"📚",pyblock:"🐍",jslblock:"📜",stmt:"▪",
-                 pysend:"📤",pyget:"📥",cell:"🧩",section:"📑",text:"📝"};
+                 pysend:"📤",pyget:"📥",cell:"🧩",section:"📑",text:"📝",
+                 choice:"🔘",launch:"🚀"};
 const LANG_LABEL={jsl:"JSL",python:"Python",notebook:"Notebook",text:"Text"};
 const LANG_SHORT={jsl:"JSL",python:"PY",notebook:"NB",text:""};
 function stepIcon(s){return s.type==="effect"?FX_ICON[s.kind]||"•":TYPE_ICON[s.type]||"•"}
@@ -885,34 +925,131 @@ function applyFocus(){
   const btn=document.getElementById("btnClearFocus");
   if(btn)btn.style.display=f?"inline-flex":"none";
 }
-function zoomBy(d){setZoom(GRAPH.zoom+d)}
-function zoomReset(){setZoom(1)}
+function zoomBy(d){
+  if(view==="chart"){CHART.zoom=Math.max(.3,Math.min(2.5,CHART.zoom+d));
+    applyChartZoom();return}
+  if(view==="lens"){LENS.zoom=Math.max(.6,Math.min(2,LENS.zoom+d));
+    applyLensZoom();return}
+  setZoom(GRAPH.zoom+d);
+}
+function zoomReset(){
+  if(view==="chart"){CHART.zoom=1;applyChartZoom();return}
+  if(view==="lens"){LENS.zoom=1;applyLensZoom();return}
+  setZoom(1);
+}
+function showZoom(v){const e=document.getElementById("zoomPct");
+  if(e)e.textContent=Math.round(v*100)+"%"}
+function applyChartZoom(){
+  const svg2=document.querySelector("#chartFlow svg");
+  if(svg2&&svg2.dataset.w){
+    svg2.setAttribute("width",Math.round(+svg2.dataset.w*CHART.zoom));
+    svg2.setAttribute("height",Math.round(+svg2.dataset.h*CHART.zoom));
+  }
+  showZoom(CHART.zoom);
+}
+function applyLensZoom(){
+  const c=document.querySelector(".lens-code");
+  if(c)c.style.fontSize=(0.78*LENS.zoom)+"rem";
+  showZoom(LENS.zoom);
+}
+function clearFocusAll(){
+  if(view==="chart"){CHART.focus=null;applyChartFocus();return}
+  setFocus(null);
+}
 function setZoom(z){
   GRAPH.zoom=Math.max(.3,Math.min(2.5,z));
   svg.setAttribute("width",Math.round(svgW*GRAPH.zoom));
   svg.setAttribute("height",Math.round(svgH*GRAPH.zoom));
-  const el2=document.getElementById("zoomPct");
-  if(el2)el2.textContent=Math.round(GRAPH.zoom*100)+"%";
+  showZoom(GRAPH.zoom);
 }
+const CHART={zoom:1,focus:null,skeleton:false};
+const LENS={zoom:1,gapsOnly:false};
+const STORY={phases:{},unreviewed:false};
+let searchTerm="";
+
+/* filters are per view; the strip shows whichever set applies */
 function renderFilters(){
   const box=document.getElementById("gfilters");if(!box)return;
-  const defs=[["script","fScript"],["func","fFunc"],["expr","fExpr"],
-              ["var","fVar"],["flow","fFlow"]];
   box.innerHTML="";
-  defs.forEach(([k,key])=>{
-    const n=k==="flow"?(MODEL.flows||[]).length
-                      :ITEMS.filter(i=>i.kind===k).length;
-    if(!n)return;
+  const mk=(cls,label,on,fn)=>{
     const b=document.createElement("button");
-    b.className="f-"+k+(GRAPH.show[k]?" on":"");
-    b.textContent=t(key)+" "+n;
-    b.onclick=()=>{GRAPH.show[k]=!GRAPH.show[k];renderFilters();
-                   renderGraph();renderState(cur)};
-    box.appendChild(b);
-  });
+    b.className=cls+(on?" on":"");b.textContent=label;b.onclick=fn;
+    box.appendChild(b);return b;
+  };
+  if(view==="flow"){
+    [["script","fScript"],["func","fFunc"],["expr","fExpr"],
+     ["var","fVar"],["flow","fFlow"]].forEach(([k,key])=>{
+      const n=k==="flow"?(MODEL.flows||[]).length
+                        :ITEMS.filter(i=>i.kind===k).length;
+      if(!n)return;
+      mk("f-"+k,t(key)+" "+n,GRAPH.show[k],()=>{
+        GRAPH.show[k]=!GRAPH.show[k];renderFilters();renderGraph();renderState(cur)});
+    });
+  }else if(view==="chart"){
+    mk("f-script",t("skeleton"),CHART.skeleton,()=>{
+      CHART.skeleton=!CHART.skeleton;renderFilters();renderChart();renderState(cur)});
+  }else if(view==="story"){
+    const used={};steps.forEach(s2=>{used[phaseOf(s2)]=(used[phaseOf(s2)]||0)+1});
+    Object.keys(used).forEach(ph=>{
+      if(STORY.phases[ph]===undefined)STORY.phases[ph]=true;
+      mk("f-"+ph,t("phase")[ph]+" "+used[ph],STORY.phases[ph],()=>{
+        STORY.phases[ph]=!STORY.phases[ph];renderFilters();renderStory();renderState(cur)});
+    });
+    mk("f-var",t("unreviewedOnly"),STORY.unreviewed,()=>{
+      STORY.unreviewed=!STORY.unreviewed;renderFilters();renderStory();renderState(cur)});
+  }else if(view==="lens"){
+    mk("f-var",t("gapsOnly"),LENS.gapsOnly,()=>{
+      LENS.gapsOnly=!LENS.gapsOnly;renderFilters();renderLens()});
+    mk("f-script","◀ "+t("gapPrev"),false,()=>gotoGap(-1));
+    mk("f-script",t("gapNext")+" ▶",false,()=>gotoGap(1));
+  }
+}
+
+/* ---- search: same box, sensible behaviour in each view ---- */
+function applySearch(){
+  const q=searchTerm.trim().toLowerCase();
+  const info=document.getElementById("searchInfo");
+  let n=0;
+  const hit=txt=>q&&(txt||"").toLowerCase().indexOf(q)>=0;
+  if(view==="flow"){
+    for(const id in nodeEls){
+      const it=ITEMS.find(i=>i.id===id)||{};
+      const m=hit(it.label)||hit(it.sub)||hit(id);
+      nodeEls[id].classList.toggle("hit",!!m);
+      if(m)n++;
+    }
+  }else if(view==="chart"){
+    document.querySelectorAll(".ch-node").forEach(g=>{
+      const idx=+g.id.split("-")[1],s2=steps[idx];
+      const m=s2&&(hit(chartLabel(s2))||hit(s2.src)||hit(s2.detail));
+      g.classList.toggle("hit",!!m);if(m)n++;
+    });
+  }else if(view==="story"){
+    document.querySelectorAll(".sb-row").forEach(r=>{
+      const idx=+r.id.split("-")[1],s2=steps[idx];
+      const m=!q||(s2&&(hit(sentence(s2))||hit(s2.src)||hit(ownerLabel(s2))));
+      r.style.display=m?"":"none";if(q&&m)n++;
+    });
+  }else if(view==="lens"){
+    document.querySelectorAll(".lc").forEach(l=>{
+      const m=hit(l.textContent);l.classList.toggle("hit",!!m);if(m)n++;
+    });
+  }
+  if(info)info.textContent=q?(n?n+" "+t("matches"):t("noMatch")):"";
 }
 function renderLegend(){
   const L=document.getElementById("legend");if(!L)return;
+  if(view==="chart"){
+    L.innerHTML=
+       `<span><b>▭</b> ${t("legStep")}</span>`
+      +`<span style="color:var(--warn)"><b>◇</b> ${t("legDecision")}</span>`
+      +`<span style="color:var(--jmp-purple)"><b>◇</b> ${t("legChoice")}</span>`
+      +`<span><b>▱</b> ${t("legIO")}</span>`
+      +`<span><b>▢</b> ${t("legStart")}</span>`
+      +`<span style="color:var(--jmp-blue)"><b>↻</b> ${t("legLoopback")}</span>`
+      +`<span class="k">${t("focusHintChart")}</span>`;
+    return;
+  }
   const sw=(c,txt)=>`<span><i style="background:${c}"></i>${txt}</span>`;
   const ln=(c,dash,txt)=>`<span><span class="ln" style="border-top-color:${c};`
     +(dash?"border-top-style:dashed;":"")+`"></span>${txt}</span>`;
@@ -1040,9 +1177,31 @@ function renderStepList(){
   });
 }
 /* -------------------------------------------- flowchart ---- */
-let palEls={},palTarget=null;
+let palEls={},palTarget=null,chartTree=[];
+/* focus in the flowchart: keep the chosen node, its ancestors and its whole
+   sub-tree; dim every other path */
+function applyChartFocus(){
+  const f=CHART.focus;
+  const keep={};
+  if(f!==null&&chartTree.length){
+    const byI={};chartTree.forEach(n=>byI[n.i]=n);
+    const mark=n=>{keep[n.i]=1;n.children.forEach(mark)};
+    const node=byI[f];
+    if(node){
+      mark(node);
+      let p=chartTree.find(n=>n.children.indexOf(node)>=0);
+      while(p){keep[p.i]=1;const cur2=p;p=chartTree.find(n=>n.children.indexOf(cur2)>=0)}
+    }
+  }
+  document.querySelectorAll("#chartFlow .ch-node").forEach(g=>{
+    const idx=+g.id.split("-")[1];
+    g.classList.toggle("dim",f!==null&&!keep[idx]);
+  });
+  const btn=document.getElementById("btnClearFocus");
+  if(btn&&view==="chart")btn.style.display=(f!==null)?"inline-flex":"none";
+}
 function chartLabel(s){
-  if(s.type==="wfstep")return trim40(s.detail);
+  if(s.type==="wfstep"||s.type==="choice")return trim40(s.detail);
   if(s.type==="call")return shortName(s.target)+(s.count>1?" ×"+s.count:"");
   if(s.type==="branch")return "If("+trim40(s.detail)+"…)";
   if(s.type==="loop")return s.detail;
@@ -1059,73 +1218,143 @@ function lineRef(s){
 }
 function renderChart(){
   const flow=document.getElementById("chartFlow");flow.innerHTML="";
-  const NW=210,NH=48,VG=20,XI=54,X0=14,Y0=14;
-  const maxDepth=steps.reduce((m,s)=>Math.max(m,s.depth||0),0);
-  const W=X0+maxDepth*XI+NW+30, H=Y0+steps.length*(NH+VG)+10;
+  const NW=210,NH=48,GX=26,GY=30,X0=20,Y0=16;
+
+  /* ---- turn the step list into a tree: a step is a child of the nearest
+     preceding step with a smaller depth ---- */
+  const inChart=steps.map(s2=>!CHART.skeleton
+      || ["start","call","choice","branch","loop","include","cell","section",
+          "pyblock","jslblock","wfstep"].indexOf(s2.type)>=0);
+  const nodesArr=steps.map((s,i)=>({s:s,i:i,children:[],skip:!inChart[i]}));
+  const roots=[],stack=[];
+  nodesArr.forEach(n=>{
+    if(n.skip)return;                       // hidden by the skeleton filter
+    const d=n.s.depth||0;
+    while(stack.length&&(stack[stack.length-1].s.depth||0)>=d)stack.pop();
+    if(stack.length)stack[stack.length-1].children.push(n);else roots.push(n);
+    stack.push(n);
+  });
+
+  /* ---- group children: consecutive choices are alternatives and go side
+     by side; everything else follows in sequence ---- */
+  function measure(n){
+    n.groups=[];
+    let i=0;
+    while(i<n.children.length){
+      if(n.children[i].s.type==="choice"){
+        const g=[];
+        while(i<n.children.length&&n.children[i].s.type==="choice"){g.push(n.children[i]);i++}
+        n.groups.push({par:true,items:g});
+      }else{n.groups.push({par:false,items:[n.children[i]]});i++}
+    }
+    n.groups.forEach(g=>g.items.forEach(measure));
+    let w=NW,h=NH;
+    n.groups.forEach(g=>{
+      if(g.par){
+        const gw=g.items.reduce((acc,c)=>acc+c.w+GX,-GX);
+        const gh=Math.max.apply(null,g.items.map(c=>c.h));
+        w=Math.max(w,gw);h+=GY+gh;
+      }else{w=Math.max(w,g.items[0].w);h+=GY+g.items[0].h}
+    });
+    n.w=w;n.h=h;
+  }
+  function place(n,x,y){
+    n.x=x+(n.w-NW)/2;n.y=y;
+    let cy=y+NH;
+    n.groups.forEach(g=>{
+      cy+=GY;
+      if(g.par){
+        const gw=g.items.reduce((acc,c)=>acc+c.w+GX,-GX);
+        let cx=x+(n.w-gw)/2,gh=0;
+        g.items.forEach(c=>{place(c,cx,cy);cx+=c.w+GX;gh=Math.max(gh,c.h)});
+        cy+=gh;
+      }else{const c=g.items[0];place(c,x+(n.w-c.w)/2,cy);cy+=c.h}
+    });
+  }
+  roots.forEach(measure);
+  let ox=X0,W=0,H=0;
+  roots.forEach(r=>{place(r,ox,Y0);ox+=r.w+GX*2;W=ox;H=Math.max(H,r.h+Y0)});
+
   const s2=document.createElementNS(SVGNS,"svg");
-  s2.setAttribute("width",W);s2.setAttribute("height",H);
+  s2.setAttribute("viewBox","0 0 "+(W+20)+" "+(H+30));
+  s2.dataset.w=W+20;s2.dataset.h=H+30;
+  s2.setAttribute("width",Math.round((W+20)*CHART.zoom));
+  s2.setAttribute("height",Math.round((H+30)*CHART.zoom));
   const defs=document.createElementNS(SVGNS,"defs");
   defs.innerHTML='<marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5"'
     +' markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
-    +'<path d="M0,0 L10,5 L0,10 z" fill="#8896ad"/></marker>'
+    +'<path d="M0,0 L10,5 L0,10 z" fill="#8C9AB0"/></marker>'
     +'<marker id="arrl" viewBox="0 0 10 10" refX="8.5" refY="5"'
     +' markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
-    +'<path d="M0,0 L10,5 L0,10 z" fill="#2e9960"/></marker>';
+    +'<path d="M0,0 L10,5 L0,10 z" fill="var(--jmp-blue)"/></marker>';
   s2.appendChild(defs);
-  const pos=steps.map((s,idx)=>({x:X0+(s.depth||0)*XI,y:Y0+idx*(NH+VG)}));
-  // orthogonal connectors with arrowheads (drawn first, under the nodes)
-  for(let i=0;i<steps.length-1;i++){
-    const a=pos[i],b=pos[i+1];
-    const cx1=a.x+NW/2,cx2=b.x+NW/2,y1=a.y+NH,y2=b.y,ym=y2-VG/2;
+
+  /* ---- connectors: parent down to each child, fanning out for choices ---- */
+  const walkLinks=n=>{
+    n.groups.forEach(g=>{
+      g.items.forEach(c=>{
+        const p=document.createElementNS(SVGNS,"path");
+        const x1=n.x+NW/2,y1=n.y+NH,x2=c.x+NW/2,y2=c.y,ym=y2-GY/2;
+        p.setAttribute("d",Math.abs(x1-x2)<2
+          ?`M ${x1} ${y1} L ${x2} ${y2}`
+          :`M ${x1} ${y1} L ${x1} ${ym} L ${x2} ${ym} L ${x2} ${y2}`);
+        p.setAttribute("class","ch-conn"+(g.par?" ch-branch":""));
+        p.setAttribute("marker-end","url(#arr)");
+        s2.appendChild(p);
+        walkLinks(c);
+      });
+    });
+  };
+  roots.forEach(walkLinks);
+
+  /* ---- loop-back arrows: last descendant of a loop returns to it ---- */
+  const lastOf=n=>{let last=n;
+    n.groups.forEach(g=>g.items.forEach(c=>{const l=lastOf(c);
+      if(l.y+l.h>last.y)last=l}));return last};
+  nodesArr.forEach(n=>{
+    if(n.s.type!=="loop")return;
+    if(!n.children.length){          // nothing visible inside: self-loop
+      const p=document.createElementNS(SVGNS,"path");
+      const x=n.x+NW,y=n.y+NH/2;
+      p.setAttribute("d",`M ${x} ${y-8} C ${x+26} ${y-16}, ${x+26} ${y+16}, ${x+2} ${y+9}`);
+      p.setAttribute("class","ch-loopback");
+      p.setAttribute("marker-end","url(#arrl)");
+      s2.appendChild(p);
+      return;
+    }
+    const e=lastOf(n);
     const p=document.createElementNS(SVGNS,"path");
-    p.setAttribute("d",Math.abs(cx1-cx2)<2
-      ?`M ${cx1} ${y1} L ${cx2} ${y2}`
-      :`M ${cx1} ${y1} L ${cx1} ${ym} L ${cx2} ${ym} L ${cx2} ${y2}`);
-    p.setAttribute("class","ch-conn");
-    p.setAttribute("marker-end","url(#arr)");
-    s2.appendChild(p);
-  }
-  // circular loop-back connectors: from last body step up to the loop node
-  steps.forEach((s,idx)=>{
-    if(s.type!=="loop")return;
-    let end=idx;
-    while(end+1<steps.length&&(steps[end+1].depth||0)>(s.depth||0))end++;
-    const p=document.createElementNS(SVGNS,"path");
+    const xR=Math.max(n.x,e.x)+NW+16;
+    p.setAttribute("d",`M ${e.x+NW} ${e.y+NH/2} L ${xR} ${e.y+NH/2}`
+      +` L ${xR} ${n.y+NH/2} L ${n.x+NW+4} ${n.y+NH/2}`);
     p.setAttribute("class","ch-loopback");
     p.setAttribute("marker-end","url(#arrl)");
-    if(end>idx){
-      const a=pos[end],b=pos[idx];
-      const xR=Math.max(a.x,b.x)+NW+18;
-      p.setAttribute("d",`M ${a.x+NW} ${a.y+NH/2} L ${xR} ${a.y+NH/2}`
-        +` L ${xR} ${b.y+NH/2} L ${b.x+NW+4} ${b.y+NH/2}`);
-    }else{
-      const b=pos[idx],x=b.x+NW,y=b.y+NH/2;   // empty loop: small self-circle
-      p.setAttribute("d",`M ${x} ${y-8} C ${x+26} ${y-16}, ${x+26} ${y+16}, ${x+2} ${y+9}`);
-    }
     s2.appendChild(p);
   });
-  // nodes with classic flowchart shapes
-  steps.forEach((s,idx)=>{
+
+  /* ---- the nodes ---- */
+  nodesArr.forEach(n=>{
+    if(n.skip||n.x===undefined)return;
+    const s=n.s,idx=n.i,x=n.x,y=n.y;
     const g=document.createElementNS(SVGNS,"g");
-    const x=pos[idx].x,y=pos[idx].y;
     const base="ch-node "+(s.type==="branch"?"branch":s.type==="loop"?"loop"
-      :s.type==="effect"?"effect":s.type==="start"?"startn"
-      :s.type==="wfstep"||s.type==="section"?"wf":"plain")
+      :s.type==="choice"?"choice":s.type==="effect"?"effect"
+      :s.type==="start"?"startn":s.type==="wfstep"||s.type==="section"?"wf":"plain")
       +(s.lang==="python"?" pylang":"");
     g.setAttribute("id","ch-"+idx);
     g.setAttribute("data-base",base);
     g.setAttribute("class",base);
     g.style.cursor="pointer";
     let shape;
-    if(s.type==="branch"){                       // decision diamond
+    if(s.type==="branch"||s.type==="choice"){
       shape=document.createElementNS(SVGNS,"polygon");
       shape.setAttribute("points",
         `${x+NW/2},${y-4} ${x+NW+14},${y+NH/2} ${x+NW/2},${y+NH+4} ${x-14},${y+NH/2}`);
-    }else if(s.type==="effect"){                 // I/O parallelogram
+    }else if(s.type==="effect"){
       shape=document.createElementNS(SVGNS,"polygon");
       shape.setAttribute("points",
         `${x+12},${y} ${x+NW},${y} ${x+NW-12},${y+NH} ${x},${y+NH}`);
-    }else{                                       // process / start
+    }else{
       shape=document.createElementNS(SVGNS,"rect");
       shape.setAttribute("x",x);shape.setAttribute("y",y);
       shape.setAttribute("width",NW);shape.setAttribute("height",NH);
@@ -1135,34 +1364,25 @@ function renderChart(){
     const t1=document.createElementNS(SVGNS,"text");
     t1.setAttribute("x",x+NW/2);t1.setAttribute("y",y+NH/2-1);
     t1.setAttribute("text-anchor","middle");
-    t1.textContent=stepIcon(s)+" "+fitText(chartLabel(s),s.type==="branch"?20:26);
+    t1.textContent=stepIcon(s)+" "+fitText(chartLabel(s),
+      s.type==="branch"||s.type==="choice"?20:26);
     g.appendChild(t1);
-    // traceability: where this element lives in the script
     if(s.line){
       const t2=document.createElementNS(SVGNS,"text");
       t2.setAttribute("x",x+12);t2.setAttribute("y",y+NH/2+14);
-      t2.setAttribute("text-anchor","start");
       t2.setAttribute("class","ch-sub");
       t2.textContent=(MODEL.files.length>1?fitText(s.file,16)+" : ":t("cmLine")+" ")+s.line;
       g.appendChild(t2);
     }
-    const num=document.createElementNS(SVGNS,"text");
-    num.setAttribute("x",x-("branch"===s.type?22:8));
-    num.setAttribute("y",y+NH/2+3);
-    num.setAttribute("text-anchor","end");
-    num.setAttribute("class","ch-numsvg");
-    num.textContent=idx+1;
-    g.appendChild(num);
     const ttl=document.createElementNS(SVGNS,"title");
     ttl.textContent=chartLabel(s)+(s.src?"\n"+s.src.slice(0,200):"");
     g.appendChild(ttl);
     g.addEventListener("click",()=>goto(idx));
-    // code link sits inside the node on the reference line, so it can no
-    // longer collide with the node text or with a diamond's point
+    g.addEventListener("dblclick",ev=>{ev.stopPropagation();
+      CHART.focus=(CHART.focus===idx?null:idx);applyChartFocus()});
     if(s.src){
       const cc=document.createElementNS(SVGNS,"text");
-      cc.setAttribute("x",x+NW-9);
-      cc.setAttribute("y",y+NH/2+14);
+      cc.setAttribute("x",x+NW-9);cc.setAttribute("y",y+NH/2+14);
       cc.setAttribute("text-anchor","end");
       cc.setAttribute("class","ch-codelink");
       cc.textContent="‹/›";
@@ -1172,6 +1392,9 @@ function renderChart(){
     s2.appendChild(g);
   });
   flow.appendChild(s2);
+  chartTree=nodesArr;
+  applyChartFocus();
+
   const pal=document.getElementById("chartPal");pal.innerHTML="";palEls={};
   // every palette section is collapsible so the sidebar stays quiet
   const section=(title,openByDefault)=>{
@@ -1238,6 +1461,7 @@ let storyMode="component";
 const signed=new Set();
 
 function phaseOf(s){
+  if(s.type==="choice")return "flow";
   if(s.type==="import"||s.type==="include"||s.type==="start")return "setup";
   if(s.type==="effect"){
     if(s.kind==="pkg")return "setup";
@@ -1259,6 +1483,12 @@ function snippet(s,maxLines){
 }
 function setStoryMode(m){storyMode=m;renderStory();renderState(cur)}
 
+function storyPasses(s2,idx){
+  const ph=phaseOf(s2);
+  if(STORY.phases[ph]===false)return false;
+  if(STORY.unreviewed&&signed.has(idx))return false;
+  return true;
+}
 function storyRow(s,idx){
   const tr=document.createElement("tr");
   tr.id="sb-"+idx; tr.className="sb-row";
@@ -1310,10 +1540,11 @@ function renderStory(){
     </tr></thead>`;
   const tb=document.createElement("tbody");
   if(storyMode==="flow"){
-    steps.forEach((s,idx)=>tb.appendChild(storyRow(s,idx)));
+    steps.forEach((s,idx)=>{if(storyPasses(s,idx))tb.appendChild(storyRow(s,idx))});
   }else{
     const order=[],groups={};
     steps.forEach((s,idx)=>{
+      if(!storyPasses(s,idx))return;
       const key=s.owner||"?";
       if(!groups[key]){groups[key]=[];order.push(key)}
       groups[key].push(idx);
@@ -1432,6 +1663,21 @@ function coverageFor(fileName,upto){
   return {lines:lines,state:state,counts:counts,owner:owner};
 }
 
+/* step to the next / previous unrepresented line */
+function gotoGap(dir){
+  const cov=coverageFor(lensFile,cur);if(!cov)return;
+  const gaps=[];cov.state.forEach((st,i)=>{if(st==="gap")gaps.push(i+1)});
+  if(!gaps.length)return;
+  const cy=window._lastGap||0;
+  let idx=gaps.indexOf(cy);
+  idx=(idx<0?(dir>0?-1:0):idx)+dir;
+  if(idx<0)idx=gaps.length-1;if(idx>=gaps.length)idx=0;
+  window._lastGap=gaps[idx];
+  const el2=document.getElementById("L"+gaps[idx])
+    ||document.querySelector('.lc[data-l="'+gaps[idx]+'"]');
+  if(el2){el2.classList.add("hit");
+    if(el2.scrollIntoView)el2.scrollIntoView({block:"center"});}
+}
 function renderLens(){
   const box=document.getElementById("lens");
   const names=MODEL.files.map(f=>f.name);
@@ -1471,10 +1717,16 @@ function renderLens(){
     const curRange=steps[cur]&&steps[cur].file===lensFile?stepRange(steps[cur]):null;
     pre.innerHTML=cov.lines.map((ln,i)=>{
       const no=i+1,st=cov.state[i];
+      if(LENS.gapsOnly&&st!=="gap")return "";
       const isCur=curRange&&no>=curRange[0]&&no<=curRange[1];
       return `<div class="lc ${st}${isCur?" curline":""}" data-l="${no}">`
         +`<span class="ln">${no}</span><span class="lt">${esc(ln)||" "}</span></div>`;
     }).join("");
+  }
+  if(LENS.gapsOnly&&!c.gap){
+    const none=document.createElement("div");
+    none.className="lens-none";none.textContent=t("covPerfect");
+    box.appendChild(none);
   }
   box.appendChild(pre);
   const sel=document.getElementById("lensPick");
@@ -1483,6 +1735,7 @@ function renderLens(){
     el2.onclick=()=>{const l=+el2.getAttribute("data-l");
       const idx=cov.owner[l];if(idx!==undefined)goto(idx)};
   });
+  applyLensZoom();applySearch();
   const curEl=pre.querySelector(".curline");
   if(curEl&&curEl.scrollIntoView)curEl.scrollIntoView({block:"center"});
 }
@@ -1539,6 +1792,7 @@ function renderState(i){
     scrollTo_("sb-"+i);
   }
   if(view==="lens")renderLens();
+  applySearch();
   if(view==="chart"){
     document.querySelectorAll("#chartFlow .ch-node").forEach((r,idx)=>{
       r.setAttribute("class",(r.getAttribute("data-base")||"ch-node")+" "
@@ -1596,6 +1850,8 @@ function toggleExpl(){
     "toolbtn"+(m.classList.contains("solo")?"":" on");
   renderState(cur);
 }
+document.getElementById("searchBox").oninput=e=>{
+  searchTerm=e.target.value;applySearch()};
 document.getElementById("stmtToggle").onchange=e=>{
   showStmts=e.target.checked;rebuild(0)};
 document.getElementById("logToggle").onchange=e=>{
@@ -1668,8 +1924,14 @@ function setView(v){
   document.getElementById("viewStory").className=v==="story"?"on":"";
   document.getElementById("viewLens").className=v==="lens"?"on":"";
   document.getElementById("diagramWrap").style.display=v==="flow"?"block":"none";
-  document.getElementById("gbar").classList.toggle("on",v==="flow");
-  document.getElementById("legend").classList.toggle("on",v==="flow");
+  document.getElementById("gbar").classList.add("on");
+  document.querySelectorAll(".gsec").forEach(sec=>{
+    const list=(sec.getAttribute("data-for")||"").split(" ");
+    sec.classList.toggle("on",list.indexOf(v)>=0);
+  });
+  document.getElementById("legend").classList.toggle("on",v==="flow"||v==="chart");
+  renderFilters();renderLegend();
+  showZoom(v==="chart"?CHART.zoom:v==="lens"?LENS.zoom:GRAPH.zoom);
   document.getElementById("chart").style.display=v==="chart"?"flex":"none";
   document.getElementById("story").style.display=v==="story"?"block":"none";
   document.getElementById("lens").style.display=v==="lens"?"block":"none";
@@ -1690,6 +1952,7 @@ function setLang(l){lang=l;
   document.getElementById("btnPrint").textContent="🖨 "+t("printBtn");
   document.getElementById("btnOpts").textContent="⚙ "+t("optsBtn");
   document.getElementById("btnExpl").textContent="☰ "+t("explBtn");
+  document.getElementById("searchBox").placeholder=t("searchPh");
   rebuild(cur);
   // keep an open code viewer in sync with the language
   if(document.getElementById("codeModal").style.display==="flex")renderCode();

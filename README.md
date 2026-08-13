@@ -4,7 +4,7 @@
 a whole `.jmpaddin`, or pasted code — and get a plain-language explanation plus
 an animated, traceable visualization of how it runs.
 
-Version 0.6.0 · JMP 18+ · MIT License
+Version 0.8.0 · JMP 18+ · MIT License
 
 ---
 
@@ -67,8 +67,8 @@ rather than the variable it was assigned to.
 
 | View | What it shows |
 |---|---|
-| **Flow** | One lane per file, functions as nodes. Nodes light up in inferred execution order; call arrows animate. |
-| **Flowchart** | A real flowchart: diamonds for decisions, parallelograms for I/O, loop-back arrows for repetition — plus a palette listing every function and the steps at which it is called. |
+| **Flow** | A graph of scripts, functions, expressions and variables in four layouts (hierarchical, swimlane, circular, grid), with call links plus directed read/write links showing which component produces and which consumes each variable. Filter by item type, zoom, and double-click to focus on one item. |
+| **Flowchart** | The architecture, not one strand: alternative user choices (each button in a dialog) fan out side by side as parallel paths, each with its own sub-tree of what that choice does. Diamonds for decisions and choices, parallelograms for I/O, loop-back arrows for repetition, plus a palette listing every function and where it is called. |
 | **Storyboard** | A review table: *what happens* · *which component and phase it belongs to* · *the code itself*. Switch between **By component** (grouped under each function) and **Full flow** (start to finish). Each row has a tick box for sign-off. |
 | **Coverage** | The complete script with every line colour-coded: green once the walk-through has reached it, blue for lines represented but not yet reached, **amber for executable lines no step represents at all**. |
 
